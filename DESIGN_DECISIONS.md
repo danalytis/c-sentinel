@@ -48,7 +48,7 @@ Traditional monitoring tools (Prometheus, Datadog, Dynatrace) excel at time-seri
 
 A fingerprint is:
 - A point-in-time snapshot
-- Comprehensive (system info, processes, configs)
+- Comprehensive (system info, processes, configs, network)
 - Structured for semantic analysis
 - Suitable for diff-comparison between systems
 
@@ -57,20 +57,144 @@ This enables use cases that streaming metrics cannot address:
 - "What's changed since last week?"
 - "Given this snapshot, what do you predict will fail?"
 
-## What We Include vs. Exclude
+## Network Probing Design (v0.3.0)
 
-### Included in fingerprints:
-- **System basics**: hostname, kernel, uptime, load, memory
-- **Process list with metadata**: but filtered to "notable" processes
-- **Config file metadata**: not content (privacy), but checksums for drift detection
+**Decision**: Parse `/proc/net/tcp`, `/proc/net/tcp6`, `/proc/net/udp`, `/proc/net/udp6` directly rather than using `netstat` or `ss`.
 
-### Explicitly excluded:
-- **Raw log content**: Too verbose, often contains PII
-- **Network connections**: Potentially sensitive
-- **Environment variables**: Often contain secrets
-- **Full config file contents**: Could contain credentials
+**Rationale**:
+1. **No external dependencies**: `netstat` may not be installed; `ss` output format varies
+2. **Deterministic parsing**: /proc files have stable, documented formats
+3. **Process correlation**: We can map sockets to PIDs by scanning `/proc/[pid]/fd/`
 
-**Rationale**: The fingerprint should be safe to send to an external LLM API without manual review. We'd rather miss some signal than leak credentials.
+**What we capture**:
+- Listening ports (TCP/UDP, IPv4/IPv6)
+- Established connections
+- Owning process for each socket
+- "Unusual" port detection (not in common services list)
+
+**Common ports list**:
+```c
+22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995,
+3306, 5432, 6379, 8080, 8443, 27017
+```
+
+Ports above 32768 are considered ephemeral (normal for outbound).
+
+**Trade-off**: Process lookup for each socket is O(n×m) where n=sockets, m=processes. On systems with many connections, this could be slow. Acceptable for diagnostic use; would optimise for continuous monitoring.
+
+## Baseline Learning (v0.3.0)
+
+**Decision**: Store a binary "baseline" of normal system state for deviation detection.
+
+**Rationale**:
+Traditional monitoring compares metrics against static thresholds. But "normal" varies by system:
+- A database server with 50 connections is normal; on a static web server, it's suspicious
+- 80% memory usage might be fine for a Java app, alarming for a C daemon
+
+Baseline learning solves this by recording what's normal *for this specific system*.
+
+**What we track**:
+| Metric | How |
+|--------|-----|
+| Process count | Min/max/avg range |
+| Memory usage | Average and maximum |
+| Load average | Maximum observed |
+| Expected ports | List of ports that should be listening |
+| Config checksums | Detect file changes |
+
+**Learning vs. Comparing**:
+- `--learn`: Capture current state, merge with existing baseline
+- `--baseline`: Compare current state against learned baseline, report deviations
+
+**Storage format**: Binary struct written to `~/.sentinel/baseline.dat`
+- Magic number for validation ("SNTLBASE")
+- Version field for future compatibility
+- Creation and update timestamps
+
+**Trade-off**: Binary format is not human-readable. Chose this for simplicity; could add `--baseline-export` for JSON output later.
+
+## Configuration File (v0.3.0)
+
+**Decision**: Support `~/.sentinel/config` with INI-style key=value format.
+
+**Rationale**:
+Users need to configure:
+- API keys (Anthropic, OpenAI, Ollama)
+- Thresholds (what counts as "high" memory, FDs, etc.)
+- Webhook URLs for alerting
+- Default behaviour (always probe network? default interval?)
+
+**Why not YAML/JSON/TOML?**
+- INI is simple to parse without external libraries
+- Good enough for flat key-value configuration
+- Human-readable and editable
+
+**Environment variable fallback**:
+API keys can come from environment variables (`ANTHROPIC_API_KEY`, etc.) or the config file. Environment takes precedence—standard practice for secrets.
+
+**Security**:
+- Config file created with mode 0600 (owner read/write only)
+- API keys displayed as `[set]` not actual values
+
+## Webhook Alerting (v0.3.0)
+
+**Decision**: Support Slack-compatible webhook format for alerts.
+
+**Rationale**:
+When running in watch mode, critical findings should notify humans immediately. Slack webhooks are:
+- De facto standard (Discord, Teams, etc. accept same format)
+- Simple HTTP POST with JSON payload
+- No authentication complexity
+
+**Implementation**: Shell out to `curl` rather than implementing HTTP in C.
+
+**Trade-off**: Requires `curl` to be installed. Acceptable—it's near-universal on Linux systems.
+
+**Alert levels**:
+- Critical: Zombies, permission issues, many unusual ports
+- Warning: Some unusual ports, high FD counts
+- Info: Available but not implemented yet
+
+## Exit Codes for CI/CD (v0.3.0)
+
+**Decision**: Return meaningful exit codes for automation.
+
+| Code | Meaning |
+|------|---------|
+| 0 | No issues detected |
+| 1 | Warnings (minor issues) |
+| 2 | Critical findings |
+| 3 | Error (probe failed) |
+
+**Rationale**:
+Enables use in CI/CD pipelines:
+```bash
+./bin/sentinel --quick --network
+if [ $? -eq 2 ]; then
+    echo "Critical issues found!"
+    exit 1
+fi
+```
+
+## Watch Mode Design (v0.3.0)
+
+**Decision**: Built-in continuous monitoring rather than relying on cron.
+
+**Rationale**:
+- Simpler for users: one command instead of configuring cron
+- Clean shutdown handling (SIGINT/SIGTERM)
+- Can accumulate worst exit code across runs
+- Foundation for future features (webhooks on state change)
+
+**Implementation**:
+```c
+while (keep_running) {
+    run_analysis();
+    sleep(interval);
+}
+```
+
+**Trade-off**: Long-running process vs. cron job. For production, a systemd service with restart-on-failure would be more robust. Added to roadmap.
 
 ## "Notable" Process Selection
 
@@ -128,40 +252,10 @@ Some probes (like reading all process FDs) may return partial results for non-ro
 
 ### Sanitization
 Before sending to LLM:
-- Hostnames are preserved (useful context) but could be made optional
-- IP addresses in paths/strings should be redacted (TODO)
-- Username-like patterns should be redacted (TODO)
-
-## Future Architecture
-
-### Now Implemented:
-
-1. **Policy Engine (C)**: A rules-based validator that approves/rejects LLM suggestions before presenting to user. See `policy.c`.
-
-2. **Sanitizer (C)**: Strips IP addresses, home directories, and secrets before data leaves the system boundary. See `sanitize.c`.
-
-3. **Drift Detection**: The `sentinel-diff` tool compares two fingerprints to detect configuration drift between "identical" systems.
-
-### Planned additions:
-1. **Policy Engine (C)**: A rules-based validator that can approve/reject LLM suggestions before presenting to user
-2. **Comparative mode**: Diff two fingerprints to detect drift
-3. **Watch mode**: Periodic fingerprints with delta reporting
-4. **Plugin system**: Allow custom probers for specific applications (nginx, mysql, etc.)
-
-### Why not add now:
-YAGNI (You Ain't Gonna Need It). Ship the MVP, learn from real usage, then extend.
-
-## Lessons from 30 Years of UNIX
-
-This tool embeds certain assumptions from experience:
-
-1. **Zombies are never okay**: Some monitoring tools ignore them. We don't.
-2. **Long-running processes deserve scrutiny**: A process that's been running for 30 days may have accumulated state, leaked memory, or holding stale connections.
-3. **Config drift is insidious**: Two "identical" servers with one different sysctl setting have caused countless production incidents.
-4. **World-writable configs are never intentional**: This is always either a mistake or a compromise.
-5. **File descriptor leaks are slow killers**: The system runs fine until suddenly it doesn't.
-
-These aren't just heuristics—they're battle scars.
+- IP addresses are redacted to `[REDACTED-IP]`
+- Home directory paths are redacted
+- Known secret environment variables are redacted
+- Visible placeholders so analysts know data was present
 
 ## The Policy Engine: AI Safety Gate
 
@@ -196,45 +290,9 @@ LLMs can suggest dangerous commands. Even well-intentioned suggestions like "cle
 | `:(){:\|:&};:` | Fork bomb |
 | `chmod 777 /` | Security disaster |
 
-**Trade-off**: We might block legitimate commands. That's acceptable—we'd rather have false positives than let a dangerous command through to a production system.
-
-## The Sanitizer: Data Boundary Protection
-
-**Decision**: Strip sensitive data before ANY transmission to external APIs.
-
-**Why This Matters for Enterprise AI**:
-You cannot send production system data to external LLM APIs without sanitization. Even non-prod environments contain:
-- IP addresses that reveal network topology
-- Usernames that could be used in phishing
-- Paths that reveal internal project structures
-- Environment variables with credentials
-
-**Sanitization Strategy**:
-
-| Data Type | Detection Method | Replacement |
-|-----------|-----------------|-------------|
-| IPv4 | `\d+\.\d+\.\d+\.\d+` pattern | `[REDACTED-IP]` |
-| IPv6 | Multiple colons with hex | `[REDACTED-IP]` |
-| Home dirs | `/home/` or `/Users/` prefix | `[REDACTED-PATH]` |
-| Secrets | `password=`, `token=`, etc. | `[REDACTED-SECRET]` |
-| Env vars | Values of sensitive env vars | `[REDACTED-SECRET]` |
-
-**Design Choice - Visible Redaction**:
-We use visible placeholders (`[REDACTED-IP]`) rather than silent removal because:
-- Analysts can see that data was present and removed
-- The LLM can reason about "there was an IP here" without seeing the actual IP
-- Debugging is easier when you know what was removed
-
-**Built-in Secret Detection**:
-The sanitizer automatically redacts values of common secret environment variables:
-- `AWS_SECRET_ACCESS_KEY`
-- `GITHUB_TOKEN`
-- `ANTHROPIC_API_KEY`
-- `DATABASE_PASSWORD`
-
 ## Drift Detection Philosophy
 
-**Decision**: Build fingerprint comparison as a first-class tool (`sentinel-diff`).
+**Decision**: Build fingerprint comparison as a first-class tool (`sentinel-diff`) and baseline deviation detection.
 
 **The "Identical Systems" Lie**:
 In 30 years of UNIX, I've never seen two systems that Ops claimed were "identical" actually be identical. There's always:
@@ -246,25 +304,27 @@ In 30 years of UNIX, I've never seen two systems that Ops claimed were "identica
 **Why Traditional Tools Miss This**:
 Monitoring tools compare each system against its own baseline. They don't compare systems against each other. If both systems have the same bug, neither alerts.
 
-**Diff Design**:
-- Exit code indicates drift (0 = no diff, 1 = differences found)
-- Significant differences (>10% numeric, any string mismatch) are starred
-- Human-readable hints explain why differences might matter
+**Two Approaches**:
+1. **sentinel-diff**: Compare two JSON fingerprints (different systems)
+2. **--baseline**: Compare current state against learned normal (same system over time)
 
-**Example Output**:
-```
-FIELD                     node-a               node-b               DELTA
------                     ------               ------               -----
-* kernel                  5.4.0-150            5.4.0-148            
-* memory_used_percent     45.20                78.30                53.8%
-  zombie_count            0.00                 2.00                 200.0%
+Both detect drift; different use cases.
 
---- Analysis Hints ---
-- Kernel version mismatch: May affect system call behavior
-- Memory usage differs: Check for memory leaks or different workloads
-```
+## Lessons from 30 Years of UNIX
+
+This tool embeds certain assumptions from experience:
+
+1. **Zombies are never okay**: Some monitoring tools ignore them. We don't.
+2. **Long-running processes deserve scrutiny**: A process that's been running for 30 days may have accumulated state, leaked memory, or holding stale connections.
+3. **Config drift is insidious**: Two "identical" servers with one different sysctl setting have caused countless production incidents.
+4. **World-writable configs are never intentional**: This is always either a mistake or a compromise.
+5. **File descriptor leaks are slow killers**: The system runs fine until suddenly it doesn't.
+6. **New listening ports are suspicious**: If a port wasn't open yesterday, ask why it's open today.
+7. **Missing services are emergencies**: If a port was supposed to be listening and isn't, something failed.
+
+These aren't just heuristics—they're battle scars.
 
 ---
 
-*Last updated: 2025*
-*Author: [Your Name]*
+*Last updated: January 2026*
+*Author: William Murray*

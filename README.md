@@ -5,6 +5,16 @@
 A lightweight, portable system prober written in C that captures "system fingerprints" for AI-assisted analysis of non-obvious risks.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
+
+## What's New in v0.3.0
+
+- 🧠 **Baseline Learning** - Teach Sentinel what "normal" looks like, detect deviations
+- 🌐 **Network Probe** - Monitor listening ports, established connections, unusual services
+- 👁️ **Watch Mode** - Continuous monitoring with configurable intervals
+- ⚙️ **Config File** - `~/.sentinel/config` for API keys, thresholds, webhooks
+- 🔔 **Webhook Alerts** - Slack/Discord notifications on critical findings
+- 📊 **Exit Codes** - CI/CD integration (0=OK, 1=WARN, 2=CRITICAL)
 
 ## The Problem
 
@@ -18,33 +28,151 @@ They struggle with:
 
 C-Sentinel takes a different approach: capture a comprehensive system fingerprint and use LLM reasoning to identify the "ghosts in the machine."
 
-## Why C? (And Why Python Wasn't Enough)
+## Quick Start
 
-> *"By 2030, we will see a massive shift toward AI-automated infrastructure. C-Sentinel is designed to be the 'Eyes' for those autonomous agents—providing structured, low-overhead system truth."*
+```bash
+# Clone and build
+git clone https://github.com/williamofai/c-sentinel.git
+cd c-sentinel
+make
 
-This project exists at the intersection of two worlds:
+# Quick analysis
+./bin/sentinel --quick --network
 
-**The Old World**: UNIX systems, `/proc` filesystems, process states, file descriptors. These haven't changed fundamentally in 40 years. They're deterministic, well-understood, and critical.
+# Learn what's "normal" for this system
+./bin/sentinel --learn --network
 
-**The New World**: LLMs that can reason about complex systems, spot patterns humans miss, and suggest fixes. They're powerful but non-deterministic and potentially dangerous.
+# Later, detect deviations from normal
+./bin/sentinel --baseline --network
 
-### Why not just Python?
+# Continuous monitoring (every 5 minutes)
+./bin/sentinel --watch --interval 300 --network
 
-Python is excellent for API integration and orchestration. But for the *prober*—the component that reads `/proc`, parses process state, and generates the system fingerprint—Python has problems:
+# Full AI-powered analysis
+export ANTHROPIC_API_KEY="your-key"
+./bin/sentinel --json --network | python3 sentinel_analyze.py
+```
 
-| Concern | Python | C |
-|---------|--------|---|
-| **Dependencies** | Requires Python runtime (~100MB) | Static binary (~40KB) |
-| **Startup time** | ~500ms interpreter startup | ~1ms |
-| **Memory** | ~30MB baseline | <2MB |
-| **Portability** | Needs matching Python version | Runs on any POSIX system |
-| **Determinism** | GC pauses, import side effects | Predictable execution |
+## Example Output
 
-When you're probing a struggling production server, the last thing you want is your diagnostic tool consuming resources or behaving unpredictably.
+### Quick Analysis with Network
+```
+C-Sentinel Quick Analysis
+========================
+Hostname: axioma-validator
+Uptime: 13.6 days
+Load: 0.12 0.11 0.07
+Memory: 44.3% used
+Processes: 114 total
 
-### The Hybrid Architecture
+Potential Issues:
+  Zombie processes: 0
+  High FD processes: 0
+  Long-running (>7d): 97
+  Config permission issues: 0
 
-C-Sentinel uses each language for what it's best at:
+Network:
+  Listening ports: 25
+  Established connections: 13
+  Unusual ports: 11 ⚠
+
+  Listeners:
+    127.0.0.54:53 (tcp) - systemd-resolved
+    0.0.0.0:80 (tcp) - nginx
+    0.0.0.0:22 (tcp) - sshd
+    0.0.0.0:443 (tcp) - nginx
+    127.0.0.1:5432 (tcp) - postgres
+    127.0.0.1:11434 (tcp) - ollama
+    ... and 19 more
+```
+
+### Baseline Comparison
+```
+C-Sentinel Quick Analysis
+========================
+Hostname: axioma-validator
+Uptime: 13.6 days
+Load: 0.18 0.09 0.07
+Processes: 114 total
+
+Baseline Comparison
+══════════════════════════════════════════════════
+Baseline created: Thu Jan  1 23:36:16 2026
+Samples learned: 2
+Expected ports: 13
+Tracked configs: 5
+
+✓ System matches baseline - no deviations detected
+```
+
+### Deviation Detection
+```
+Baseline Comparison
+══════════════════════════════════════════════════
+Baseline created: Thu Jan  1 23:36:16 2026
+Samples learned: 5
+Expected ports: 13
+Tracked configs: 5
+
+⚠ DEVIATIONS DETECTED: 2
+──────────────────────────────────────────────────
+• NEW LISTENERS (1): 4444
+• CONFIG CHANGES (1):
+    - /etc/ssh/sshd_config
+```
+
+## Features
+
+| Feature | Command | Description |
+|---------|---------|-------------|
+| Quick analysis | `--quick` | Human-readable summary |
+| Network probe | `--network` | Listening ports & connections |
+| Watch mode | `--watch --interval 60` | Continuous monitoring |
+| Baseline learn | `--learn` | Save current state as "normal" |
+| Baseline compare | `--baseline` | Detect deviations |
+| JSON output | `--json` | Full fingerprint for LLM |
+| Config | `--config` | Show current settings |
+
+### Exit Codes (for CI/CD)
+
+| Code | Meaning |
+|------|---------|
+| 0 | No issues detected |
+| 1 | Warnings (minor issues) |
+| 2 | Critical (zombies, permission issues, unusual ports) |
+| 3 | Error (probe failed) |
+
+## Configuration
+
+Create a config file with `./bin/sentinel --init-config`, then edit `~/.sentinel/config`:
+
+```ini
+# API Keys
+anthropic_api_key = sk-ant-...
+ollama_host = http://localhost:11434
+
+# Default AI model: claude, openai, or ollama
+default_model = claude
+ollama_model = llama3.2:3b
+
+# Thresholds
+zombie_threshold = 0
+high_fd_threshold = 100
+unusual_port_threshold = 3
+memory_warn_percent = 80.0
+memory_crit_percent = 95.0
+
+# Webhook (Slack-compatible)
+webhook_url = https://hooks.slack.com/services/...
+webhook_on_critical = true
+webhook_on_warning = false
+
+# Watch mode defaults
+default_interval = 60
+network_by_default = false
+```
+
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -59,203 +187,87 @@ C-Sentinel uses each language for what it's best at:
 │  • /proc parsing            • JSON serialization            │
 │  • Process analysis         • Sanitization                  │
 │  • Config checksumming      • Drift detection               │
+│  • Network probing          • Baseline learning             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-This is the same pattern used by successful systems tools: Git (C core, various language bindings), Docker (Go core, REST API), and countless others.
+### Why C?
 
-### For AI Architects
+| Concern | Python | C |
+|---------|--------|---|
+| **Dependencies** | Requires Python runtime (~100MB) | Static binary (~76KB) |
+| **Startup time** | ~500ms interpreter startup | ~1ms |
+| **Memory** | ~30MB baseline | <2MB |
+| **Portability** | Needs matching Python version | Runs on any POSIX system |
 
-If you're building AI systems that interact with infrastructure, consider:
+When you're probing a struggling production server, the last thing you want is your diagnostic tool consuming resources.
 
-1. **The AI should not be the source of truth** about system state. A deterministic prober should be.
-2. **AI suggestions must be validated** before presentation. Our policy engine blocks dangerous commands regardless of how convincing the AI's reasoning is.
-3. **Data leaving your network must be sanitized**. The AI doesn't need to see real IP addresses to reason about network topology.
-
-These aren't just good practices—they're the difference between a demo and a production system.
-
----
-
-## Architecture
-
-```mermaid
-flowchart TB
-    subgraph "C Layer (Deterministic)"
-        A[System Prober] --> B[/proc Parser]
-        A --> C[Config Scanner]
-        A --> D[Process Analyzer]
-        B --> E[Fingerprint Builder]
-        C --> E
-        D --> E
-        E --> F[JSON Serializer]
-        F --> G[Sanitizer]
-    end
-    
-    subgraph "Python Layer (Flexible)"
-        G --> H[API Client]
-        H --> I[LLM API]
-        I --> J[Response Parser]
-        J --> K[Policy Engine]
-        K --> L[Safe Output]
-    end
-    
-    subgraph "Data Flow"
-        M[("/proc")] -.-> B
-        N[("Config Files")] -.-> C
-        O[("Process Table")] -.-> D
-    end
-```
-
-## Features
-
-- **Lightweight**: <2MB RAM, minimal binary size
-- **Portable**: Pure C99, runs on any POSIX system
-- **Safe by default**: Read-only probing, no root required
-- **Privacy-aware**: Built-in sanitization strips IPs, secrets, and PII before LLM transmission
-- **Policy engine**: Deterministic safety gate validates AI suggestions before presentation
-- **Drift detection**: Compare "identical" systems to find hidden differences
-- **Hybrid architecture**: C for performance-critical probing, Python for AI orchestration
-
-### What it captures
+## What It Captures
 
 | Category | Data | Purpose |
 |----------|------|---------|
 | System | Hostname, kernel, uptime, load, memory | Basic health context |
 | Processes | Notable processes with metadata | Zombie, leak, stuck detection |
 | Configs | File metadata and checksums | Drift detection |
+| Network | Listeners, connections, ports | Service monitoring |
 
-### What it flags
+## What It Flags
 
 - 🧟 **Zombie processes**: Always a problem
 - 📂 **High FD counts**: Potential descriptor leaks (>100 open)
-- ⏰ **Long-running processes**: >30 days without restart
+- ⏰ **Long-running processes**: >7 days without restart
 - 🔓 **Permission issues**: World-writable configs
 - 💾 **Memory hogs**: Processes >1GB RSS
+- 🌐 **Unusual ports**: Services not in common ports list
+- 📡 **New listeners**: Ports that weren't in baseline
+- ❌ **Missing services**: Expected ports that stopped listening
 
-## Quick Start
+## AI Integration
 
-**One-liner install:**
 ```bash
-git clone https://github.com/williamofai/c-sentinel.git
-cd c-sentinel
-./quickstart.sh
-```
-
-**Manual setup:**
-```bash
-# Build
-make
-
-# Quick analysis (human-readable)
-./bin/sentinel --quick
-
-# Full fingerprint (JSON for LLM)
-./bin/sentinel > fingerprint.json
-
-# Probe specific configs
-./bin/sentinel /etc/nginx/nginx.conf /etc/mysql/my.cnf
-
-# Compare two systems (drift detection)
-./bin/sentinel-diff node_a.json node_b.json
-
-# Full AI-powered analysis (requires ANTHROPIC_API_KEY)
-pip install anthropic
+# With Anthropic Claude (cloud)
 export ANTHROPIC_API_KEY="your-key"
-./sentinel_analyze.py
+./bin/sentinel --json --network | python3 sentinel_analyze.py
 
-# AI analysis with local Ollama (free, private)
+# With Ollama (local, free, private)
 ollama pull llama3.2:3b
-pip install openai
-./sentinel_analyze.py --local
+./bin/sentinel --json --network | python3 sentinel_analyze.py --local
 ```
 
-📖 **See [SAMPLES.md](SAMPLES.md) for real-world output** from the first production test, including a security anomaly detection story.
-
-### Example Output (Quick Mode)
-
-```
-C-Sentinel Quick Analysis
-========================
-Hostname: prod-web-03
-Uptime: 47.3 days
-Load: 0.42 0.38 0.35
-Processes: 287 total
-
-Potential Issues:
-  Zombie processes: 0
-  High FD processes: 2
-  Long-running (>7d): 23
-  Config permission issues: 1
-```
-
-## Using with an LLM
-
-The JSON output is designed to be sent directly to an LLM with a system prompt like:
-
-```
-You are a Principal UNIX Systems Engineer with 40 years experience.
-Analyze this system fingerprint and identify:
-1. Non-obvious risks that traditional monitoring would miss
-2. Signs of "drift" or degradation
-3. Processes that warrant investigation
-4. Configuration anomalies
-
-Be specific. Reference the actual process names, PIDs, and values.
-```
-
-### Example Python wrapper
-
-```python
-#!/usr/bin/env python3
-import subprocess
-import json
-from anthropic import Anthropic
-
-# Capture fingerprint
-result = subprocess.run(['./bin/sentinel'], capture_output=True, text=True)
-fingerprint = result.stdout
-
-# Send to Claude
-client = Anthropic()
-response = client.messages.create(
-    model="claude-sonnet-4-20250514",
-    max_tokens=1024,
-    system="You are a Principal UNIX Systems Engineer...",
-    messages=[{"role": "user", "content": f"Analyze this fingerprint:\n{fingerprint}"}]
-)
-
-print(response.content[0].text)
-```
+The Python wrapper includes:
+- **Policy Engine**: Validates AI suggestions before display
+- **Sanitizer**: Strips IPs, secrets, and PII before API transmission
+- **Safe command detection**: Blocks dangerous commands regardless of AI reasoning
 
 ## Building
-
-### Requirements
-
-- GCC or Clang with C99 support
-- GNU Make
-- Linux (uses `/proc` filesystem)
-
-### Build options
 
 ```bash
 make              # Release build
 make DEBUG=1      # Debug build with symbols
 make test         # Run basic tests
-make lint         # Static analysis (requires cppcheck)
 make install      # Install to /usr/local/bin
 ```
+
+### Requirements
+- GCC or Clang with C99 support
+- GNU Make
+- Linux (uses `/proc` filesystem)
 
 ## Project Structure
 
 ```
 c-sentinel/
 ├── include/
-│   ├── sentinel.h      # Core data structures
+│   ├── sentinel.h      # Core data structures & baseline types
 │   ├── policy.h        # Safety gate API
 │   └── sanitize.h      # Data sanitization API
 ├── src/
 │   ├── main.c          # CLI entry point
-│   ├── prober.c        # System probing functions
+│   ├── prober.c        # System probing (/proc)
+│   ├── net_probe.c     # Network probing (/proc/net)
+│   ├── baseline.c      # Baseline learning & comparison
+│   ├── config.c        # Config file parsing
+│   ├── alert.c         # Webhook alerting
 │   ├── json_serialize.c # JSON output generation
 │   ├── policy.c        # Command validation engine
 │   ├── sanitize.c      # PII/secret stripping
@@ -263,18 +275,9 @@ c-sentinel/
 ├── sentinel_analyze.py # Python wrapper for LLM integration
 ├── Makefile
 ├── README.md
-├── DESIGN_DECISIONS.md # Architectural rationale (read this!)
+├── DESIGN_DECISIONS.md
 └── LICENSE
 ```
-
-## Design Philosophy
-
-See [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) for detailed rationale, but the key principles are:
-
-1. **C for determinism**: The "must not fail" parts are in C
-2. **Read-only by design**: We observe, never modify
-3. **Filter, don't flood**: Send notable findings, not raw data
-4. **Safe for external APIs**: Sanitize before sending anywhere
 
 ## Roadmap
 
@@ -284,11 +287,17 @@ See [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) for detailed rationale, but the k
 - [x] Sanitizer (PII stripping)
 - [x] Drift detection (sentinel-diff)
 - [x] Python wrapper with Claude integration
+- [x] Network probing
+- [x] Watch mode
+- [x] Baseline learning
+- [x] Config file support
+- [x] Webhook alerts
 - [ ] SHA256 checksums (replace simple hash)
-- [ ] Watch mode (periodic fingerprints)
+- [ ] Systemd service unit
+- [ ] Web dashboard
+- [ ] Multi-host aggregation
 - [ ] Plugin system for application-specific probes
 - [ ] FreeBSD/macOS support
-- [ ] Web UI for drift visualization
 
 ## Contributing
 
@@ -303,9 +312,12 @@ Contributions welcome! Areas of particular interest:
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## Acknowledgments
+## Author
 
-This project grew from 30 years of UNIX systems experience and countless hours of asking "why did that break?" The patterns it detects aren't theoretical—they're battle scars.
+**William Murray** - 30 years UNIX systems engineering
+
+- GitHub: [@williamofai](https://github.com/williamofai)
+- LinkedIn: [William Murray](https://www.linkedin.com/in/yourprofile)
 
 ---
 
