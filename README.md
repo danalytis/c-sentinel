@@ -134,6 +134,14 @@ flowchart TB
 
 ## Quick Start
 
+**One-liner install:**
+```bash
+git clone https://github.com/williamofai/c-sentinel.git
+cd c-sentinel
+./quickstart.sh
+```
+
+**Manual setup:**
 ```bash
 # Build
 make
@@ -155,9 +163,13 @@ pip install anthropic
 export ANTHROPIC_API_KEY="your-key"
 ./sentinel_analyze.py
 
-# AI analysis of specific configs
-./sentinel_analyze.py --config /etc/ssh/sshd_config
+# AI analysis with local Ollama (free, private)
+ollama pull llama3.2:3b
+pip install openai
+./sentinel_analyze.py --local
 ```
+
+📖 **See [SAMPLES.md](SAMPLES.md) for real-world output** from the first production test, including a security anomaly detection story.
 
 ### Example Output (Quick Mode)
 
