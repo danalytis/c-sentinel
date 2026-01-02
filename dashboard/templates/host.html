@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ hostname }} - C-Sentinel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .status-ok { color: #22c55e; }
+        .status-warning { color: #eab308; }
+        .status-critical { color: #ef4444; }
+        .status-stale { color: #6b7280; }
+        
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+        
+        .chart-container {
+            position: relative;
+            height: 200px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <!-- Header -->
+    <header class="bg-gray-800 border-b border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <div class="flex items-center space-x-4">
+                <a href="/" class="text-gray-400 hover:text-white">
+                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                </a>
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
+                        <i data-lucide="server" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">{{ hostname }}</h1>
+                        <p id="host-status" class="text-xs text-gray-400">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Quick Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-xs mb-1">Memory</div>
+                <div id="stat-memory" class="text-2xl font-mono">-</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-xs mb-1">Load (1m)</div>
+                <div id="stat-load" class="text-2xl font-mono">-</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-xs mb-1">Processes</div>
+                <div id="stat-processes" class="text-2xl font-mono">-</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-xs mb-1">Zombies</div>
+                <div id="stat-zombies" class="text-2xl font-mono">-</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-xs mb-1">Listeners</div>
+                <div id="stat-listeners" class="text-2xl font-mono">-</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-xs mb-1">Uptime</div>
+                <div id="stat-uptime" class="text-2xl font-mono">-</div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <h3 class="text-sm font-semibold mb-4 text-gray-400">Memory Usage (24h)</h3>
+                <div class="chart-container">
+                    <canvas id="memory-chart"></canvas>
+                </div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <h3 class="text-sm font-semibold mb-4 text-gray-400">Load Average (24h)</h3>
+                <div class="chart-container">
+                    <canvas id="load-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="mb-6">
+            <div class="flex space-x-4 border-b border-gray-700">
+                <button onclick="showTab('network')" id="tab-network" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-emerald-500 text-emerald-400">
+                    Network
+                </button>
+                <button onclick="showTab('processes')" id="tab-processes" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                    Processes
+                </button>
+                <button onclick="showTab('configs')" id="tab-configs" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                    Configs
+                </button>
+                <button onclick="showTab('raw')" id="tab-raw" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                    Raw JSON
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div id="content-network" class="tab-content">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-900">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-gray-400">Address</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Port</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Proto</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Process</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="network-table">
+                        <tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="content-processes" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-900">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-gray-400">PID</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Name</th>
+                            <th class="px-4 py-2 text-left text-gray-400">State</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Memory</th>
+                            <th class="px-4 py-2 text-left text-gray-400">FDs</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Flags</th>
+                        </tr>
+                    </thead>
+                    <tbody id="process-table">
+                        <tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="content-configs" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-900">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-gray-400">Path</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Size</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Modified</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Permissions</th>
+                            <th class="px-4 py-2 text-left text-gray-400">Checksum (SHA256)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="config-table">
+                        <tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="content-raw" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <pre id="raw-json" class="text-xs text-gray-300 font-mono overflow-auto max-h-96">Loading...</pre>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const hostname = '{{ hostname }}';
+        let memoryChart, loadChart;
+
+        lucide.createIcons();
+
+        // Tab switching
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-emerald-500', 'text-emerald-400');
+                el.classList.add('border-transparent', 'text-gray-400');
+            });
+            
+            document.getElementById('content-' + tabName).classList.remove('hidden');
+            const btn = document.getElementById('tab-' + tabName);
+            btn.classList.add('border-emerald-500', 'text-emerald-400');
+            btn.classList.remove('border-transparent', 'text-gray-400');
+        }
+
+        // Format bytes
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+        }
+
+        // Initialize charts
+        function initCharts() {
+            const chartConfig = {
+                type: 'line',
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { 
+                            display: true,
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: '#9ca3af', maxRotation: 45 }
+                        },
+                        y: { 
+                            display: true,
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: '#9ca3af' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            };
+
+            memoryChart = new Chart(document.getElementById('memory-chart'), {
+                ...chartConfig,
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3
+                    }]
+                }
+            });
+
+            loadChart = new Chart(document.getElementById('load-chart'), {
+                ...chartConfig,
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3
+                    }]
+                }
+            });
+        }
+
+        // Load host data
+        async function loadHostData() {
+            try {
+                const response = await fetch(`/api/hosts/${hostname}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('host-status').textContent = 'Host not found';
+                    return;
+                }
+
+                // Update status
+                const lastSeen = new Date(data.last_seen);
+                const ageMinutes = (new Date() - lastSeen) / 60000;
+                let status = 'ok';
+                if (ageMinutes > 10) status = 'stale';
+                
+                document.getElementById('host-status').textContent = 
+                    `Last seen: ${lastSeen.toLocaleString()} (${status})`;
+
+                // Update charts
+                const fingerprints = data.fingerprints.slice(0, 50).reverse();
+                const labels = fingerprints.map(f => 
+                    new Date(f.captured_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                );
+                
+                memoryChart.data.labels = labels;
+                memoryChart.data.datasets[0].data = fingerprints.map(f => f.memory_percent || 0);
+                memoryChart.update();
+
+                loadChart.data.labels = labels;
+                loadChart.data.datasets[0].data = fingerprints.map(f => f.load_1m || 0);
+                loadChart.update();
+
+                // Update stats from latest
+                if (fingerprints.length > 0) {
+                    const latest = fingerprints[fingerprints.length - 1];
+                    document.getElementById('stat-memory').textContent = 
+                        latest.memory_percent ? latest.memory_percent.toFixed(1) + '%' : '-';
+                    document.getElementById('stat-load').textContent = 
+                        latest.load_1m ? latest.load_1m.toFixed(2) : '-';
+                    document.getElementById('stat-processes').textContent = 
+                        latest.process_count || '-';
+                    document.getElementById('stat-zombies').textContent = 
+                        latest.zombie_count || '0';
+                    document.getElementById('stat-listeners').textContent = 
+                        latest.listener_count || '-';
+                    document.getElementById('stat-uptime').textContent = 
+                        latest.uptime_days ? latest.uptime_days.toFixed(1) + 'd' : '-';
+                }
+
+            } catch (error) {
+                console.error('Failed to load host data:', error);
+            }
+        }
+
+        // Load latest fingerprint details
+        async function loadLatestFingerprint() {
+            try {
+                const response = await fetch(`/api/hosts/${hostname}/latest`);
+                const result = await response.json();
+                
+                if (result.error) return;
+                
+                const data = result.data;
+
+                // Network table
+                const listeners = data.network?.listeners || [];
+                document.getElementById('network-table').innerHTML = listeners.length ? 
+                    listeners.map(l => `
+                        <tr class="border-t border-gray-700">
+                            <td class="px-4 py-2 font-mono">${l.address}</td>
+                            <td class="px-4 py-2 font-mono">${l.port}</td>
+                            <td class="px-4 py-2">${l.protocol}</td>
+                            <td class="px-4 py-2">${l.process || '-'}</td>
+                            <td class="px-4 py-2">
+                                ${l.unusual ? '<span class="text-yellow-400">unusual</span>' : '<span class="text-gray-500">normal</span>'}
+                            </td>
+                        </tr>
+                    `).join('') :
+                    '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">No listeners</td></tr>';
+
+                // Process table
+                const processes = data.notable_processes || [];
+                document.getElementById('process-table').innerHTML = processes.length ?
+                    processes.map(p => `
+                        <tr class="border-t border-gray-700">
+                            <td class="px-4 py-2 font-mono">${p.pid}</td>
+                            <td class="px-4 py-2">${p.name}</td>
+                            <td class="px-4 py-2">${p.state}</td>
+                            <td class="px-4 py-2 font-mono">${formatBytes(p.rss_bytes || 0)}</td>
+                            <td class="px-4 py-2 font-mono">${p.fd_count || '-'}</td>
+                            <td class="px-4 py-2 text-xs">
+                                ${p.zombie ? '<span class="text-red-400 mr-1">zombie</span>' : ''}
+                                ${p.high_fd_count ? '<span class="text-yellow-400 mr-1">high-fd</span>' : ''}
+                                ${p.high_memory ? '<span class="text-yellow-400 mr-1">high-mem</span>' : ''}
+                            </td>
+                        </tr>
+                    `).join('') :
+                    '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">No notable processes</td></tr>';
+
+                // Config table
+                const configs = data.config_files || [];
+                document.getElementById('config-table').innerHTML = configs.length ?
+                    configs.map(c => `
+                        <tr class="border-t border-gray-700">
+                            <td class="px-4 py-2 font-mono text-xs">${c.path}</td>
+                            <td class="px-4 py-2 font-mono">${formatBytes(c.size_bytes || 0)}</td>
+                            <td class="px-4 py-2 text-xs">${c.modified || '-'}</td>
+                            <td class="px-4 py-2 font-mono">${c.permissions || '-'}</td>
+                            <td class="px-4 py-2 font-mono text-xs truncate max-w-xs" title="${c.checksum}">${c.checksum?.substring(0, 16)}...</td>
+                        </tr>
+                    `).join('') :
+                    '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">No config files tracked</td></tr>';
+
+                // Raw JSON
+                document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                console.error('Failed to load fingerprint:', error);
+            }
+        }
+
+        // Initialize
+        initCharts();
+        loadHostData();
+        loadLatestFingerprint();
+
+        // Auto-refresh
+        setInterval(() => {
+            loadHostData();
+            loadLatestFingerprint();
+        }, 30000);
+    </script>
+</body>
+</html>
+
