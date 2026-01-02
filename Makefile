@@ -40,7 +40,10 @@ SENTINEL_SRCS = $(SRC_DIR)/main.c \
                 $(SRC_DIR)/baseline.c \
                 $(SRC_DIR)/config.c \
                 $(SRC_DIR)/alert.c \
-                $(SRC_DIR)/sha256.c
+                $(SRC_DIR)/sha256.c \
+                $(SRC_DIR)/audit.c \
+                $(SRC_DIR)/audit_json.c \
+                $(SRC_DIR)/process_chain.c
 
 SENTINEL_OBJS = $(SENTINEL_SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
@@ -49,7 +52,7 @@ DIFF_SRCS = $(SRC_DIR)/diff.c
 DIFF_OBJS = $(DIFF_SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
 # Header dependencies
-HEADERS = $(INC_DIR)/sentinel.h $(INC_DIR)/policy.h $(INC_DIR)/sanitize.h
+HEADERS = $(INC_DIR)/sentinel.h $(INC_DIR)/policy.h $(INC_DIR)/sanitize.h $(INC_DIR)/audit.h
 
 # Target binaries
 SENTINEL = $(BIN_DIR)/sentinel
@@ -123,6 +126,9 @@ test: all
 	@echo ""
 	@echo "4. JSON validity test..."
 	@python3 -c "import json; json.load(open('/tmp/sentinel_test.json'))" 2>/dev/null && echo "   PASS: Valid JSON" || echo "   FAIL: Invalid JSON"
+	@echo ""
+	@echo "5. Audit probe test..."
+	@./$(SENTINEL) --audit --quick 2>/dev/null && echo "   PASS: Audit probe" || echo "   WARN: Audit probe (auditd may not be installed)"
 	@echo ""
 	@echo "=== All tests complete ==="
 	@rm -f /tmp/sentinel_test.json /tmp/fp1.json /tmp/fp2.json

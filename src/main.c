@@ -19,6 +19,7 @@
 #include <time.h>
 
 #include "sentinel.h"
+#include "audit.h"
 
 /* Default config files to probe if none specified */
 static const char *default_configs[] = {
@@ -32,6 +33,9 @@ static const char *default_configs[] = {
 
 /* Global flag for clean shutdown in watch mode */
 static volatile int keep_running = 1;
+
+/* Global audit summary for JSON output integration */
+static audit_summary_t *g_audit_summary = NULL;
 
 static void signal_handler(int signum) {
     (void)signum;
@@ -50,15 +54,17 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "  -w, --watch          Continuous monitoring mode\n");
     fprintf(stderr, "  -i, --interval SEC   Interval between probes in watch mode (default: 60)\n");
     fprintf(stderr, "  -n, --network        Include network probe (listeners, connections)\n");
+    fprintf(stderr, "  -a, --audit          Include auditd security events\n");
     fprintf(stderr, "  -b, --baseline       Compare against learned baseline\n");
     fprintf(stderr, "  -l, --learn          Learn current state as baseline\n");
     fprintf(stderr, "  -c, --config         Show current configuration\n");
     fprintf(stderr, "      --init-config    Create default config file\n");
+    fprintf(stderr, "      --audit-learn    Learn audit baseline\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Exit codes:\n");
     fprintf(stderr, "  0 - No issues detected\n");
     fprintf(stderr, "  1 - Warnings (minor issues)\n");
-    fprintf(stderr, "  2 - Critical (zombies, permission issues, unusual ports)\n");
+    fprintf(stderr, "  2 - Critical (zombies, permission issues, unusual ports, security events)\n");
     fprintf(stderr, "  3 - Error (probe failed)\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "If no config files are specified, probes common system configs.\n");
@@ -67,11 +73,17 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "  First, learn what's normal:    %s --learn --network\n", prog);
     fprintf(stderr, "  Then compare against baseline: %s --baseline --network\n", prog);
     fprintf(stderr, "\n");
+    fprintf(stderr, "Audit:\n");
+    fprintf(stderr, "  Include security events:       %s --quick --audit\n", prog);
+    fprintf(stderr, "  Learn audit baseline:          %s --audit-learn\n", prog);
+    fprintf(stderr, "  Full analysis with audit:      %s --json --network --audit\n", prog);
+    fprintf(stderr, "\n");
     fprintf(stderr, "Config file: ~/.sentinel/config\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Examples:\n");
     fprintf(stderr, "  %s --quick                    One-shot quick analysis\n", prog);
     fprintf(stderr, "  %s --quick --network          Include network probe\n", prog);
+    fprintf(stderr, "  %s --quick --network --audit  Include network + security events\n", prog);
     fprintf(stderr, "  %s --watch --interval 300     Monitor every 5 minutes\n", prog);
     fprintf(stderr, "  %s --json > fingerprint.json  Save full JSON output\n", prog);
     fprintf(stderr, "  %s --learn --network          Learn current state as baseline\n", prog);
@@ -86,8 +98,68 @@ static void print_timestamp(void) {
     printf("[%s] ", buf);
 }
 
+static void print_audit_summary_quick(const audit_summary_t *audit) {
+    if (!audit || !audit->enabled) {
+        printf("\nAudit: unavailable (auditd not running or not readable)\n");
+        return;
+    }
+    
+    printf("\nSecurity (audit):\n");
+    printf("  Auth failures: %d", audit->auth_failures);
+    if (audit->auth_deviation_pct > 100.0f) {
+        printf(" (%.0f%% above baseline) ⚠", audit->auth_deviation_pct);
+    }
+    printf("\n");
+    
+    if (audit->brute_force_detected) {
+        printf("  ⚠ BRUTE FORCE PATTERN DETECTED\n");
+    }
+    
+    printf("  Sudo commands: %d", audit->sudo_count);
+    if (audit->sudo_deviation_pct > 200.0f) {
+        printf(" (%.0f%% above baseline) ⚠", audit->sudo_deviation_pct);
+    }
+    printf("\n");
+    
+    if (audit->sensitive_file_count > 0) {
+        printf("  Sensitive file access: %d\n", audit->sensitive_file_count);
+        for (int i = 0; i < audit->sensitive_file_count && i < 5; i++) {
+            printf("    - %s by %s%s\n", 
+                   audit->sensitive_files[i].path,
+                   audit->sensitive_files[i].process,
+                   audit->sensitive_files[i].suspicious ? " ⚠" : "");
+        }
+    }
+    
+    if (audit->tmp_executions > 0) {
+        printf("  ⚠ Executions from /tmp: %d\n", audit->tmp_executions);
+    }
+    if (audit->devshm_executions > 0) {
+        printf("  ⚠ Executions from /dev/shm: %d\n", audit->devshm_executions);
+    }
+    
+    if (audit->selinux_avc_denials > 0) {
+        printf("  SELinux denials: %d\n", audit->selinux_avc_denials);
+    }
+    if (audit->apparmor_denials > 0) {
+        printf("  AppArmor denials: %d\n", audit->apparmor_denials);
+    }
+    
+    /* Show anomalies */
+    if (audit->anomaly_count > 0) {
+        printf("\n  Anomalies detected:\n");
+        for (int i = 0; i < audit->anomaly_count; i++) {
+            printf("    [%s] %s\n", 
+                   audit->anomalies[i].severity,
+                   audit->anomalies[i].description);
+        }
+    }
+    
+    printf("\n  Risk: %s (score: %d)\n", audit->risk_level, audit->risk_score);
+}
+
 static int run_analysis(const char **configs, int config_count, 
-                        int quick_mode, int json_mode, int network_mode) {
+                        int quick_mode, int json_mode, int network_mode, int audit_mode) {
     fingerprint_t fp;
     int result = capture_fingerprint(&fp, configs, config_count);
     
@@ -100,6 +172,13 @@ static int run_analysis(const char **configs, int config_count,
         probe_network(&fp.network);
     }
     
+    /* Probe audit if requested */
+    audit_summary_t *audit = NULL;
+    if (audit_mode) {
+        audit = probe_audit(300);  /* Last 5 minutes */
+        g_audit_summary = audit;
+    }
+    
     /* Always do quick analysis for exit code calculation */
     quick_analysis_t analysis;
     analyze_fingerprint_quick(&fp, &analysis);
@@ -109,9 +188,28 @@ static int run_analysis(const char **configs, int config_count,
         char *json = fingerprint_to_json(&fp);
         if (!json) {
             fprintf(stderr, "Error: Failed to serialize fingerprint to JSON\n");
+            if (audit) free_audit_summary(audit);
             return EXIT_ERROR;
         }
-        printf("%s", json);
+        
+        /* If audit mode, we need to inject audit JSON before the closing brace */
+        if (audit && audit->enabled) {
+            /* Find the last closing brace */
+            char *last_brace = strrchr(json, '}');
+            if (last_brace && last_brace > json) {
+                /* Build combined output */
+                char audit_json[16384];
+                audit_to_json(audit, audit_json, sizeof(audit_json));
+                
+                /* Print everything before the last }, then audit, then } */
+                *last_brace = '\0';
+                printf("%s,\n%s\n}\n", json, audit_json);
+            } else {
+                printf("%s", json);
+            }
+        } else {
+            printf("%s", json);
+        }
         free(json);
     } else if (quick_mode) {
         /* Quick analysis only */
@@ -153,28 +251,64 @@ static int run_analysis(const char **configs, int config_count,
                 }
             }
         }
+        
+        /* Audit summary */
+        if (audit_mode) {
+            print_audit_summary_quick(audit);
+        }
     } else {
         /* Full JSON output (default) */
         char *json = fingerprint_to_json(&fp);
         if (!json) {
             fprintf(stderr, "Error: Failed to serialize fingerprint to JSON\n");
+            if (audit) free_audit_summary(audit);
             return EXIT_ERROR;
         }
-        printf("%s", json);
+        
+        /* Same audit injection logic */
+        if (audit && audit->enabled) {
+            char *last_brace = strrchr(json, '}');
+            if (last_brace && last_brace > json) {
+                char audit_json[16384];
+                audit_to_json(audit, audit_json, sizeof(audit_json));
+                *last_brace = '\0';
+                printf("%s,\n%s\n}\n", json, audit_json);
+            } else {
+                printf("%s", json);
+            }
+        } else {
+            printf("%s", json);
+        }
         free(json);
     }
     
     /* Calculate exit code based on issues */
+    int exit_code = EXIT_OK;
+    
     if (analysis.zombie_process_count > 0 || 
         analysis.config_permission_issues > 0 ||
         analysis.unusual_listeners > 3) {
-        return EXIT_CRITICAL;
+        exit_code = EXIT_CRITICAL;
     } else if (analysis.high_fd_process_count > 5 ||
                analysis.unusual_listeners > 0) {
-        return EXIT_WARNINGS;
+        exit_code = EXIT_WARNINGS;
     }
     
-    return EXIT_OK;
+    /* Audit can also trigger critical */
+    if (audit && audit->enabled) {
+        if (audit->risk_score >= 16) {  /* high or critical */
+            exit_code = EXIT_CRITICAL;
+        } else if (audit->risk_score >= 6 && exit_code < EXIT_WARNINGS) {
+            exit_code = EXIT_WARNINGS;
+        }
+    }
+    
+    if (audit) {
+        free_audit_summary(audit);
+        g_audit_summary = NULL;
+    }
+    
+    return exit_code;
 }
 
 int main(int argc, char *argv[]) {
@@ -182,6 +316,8 @@ int main(int argc, char *argv[]) {
     int json_mode = 0;
     int watch_mode = 0;
     int network_mode = 0;
+    int audit_mode = 0;
+    int audit_learn = 0;
     int baseline_mode = 0;
     int learn_mode = 0;
     int show_config = 0;
@@ -197,14 +333,16 @@ int main(int argc, char *argv[]) {
         {"watch",       no_argument,       0, 'w'},
         {"interval",    required_argument, 0, 'i'},
         {"network",     no_argument,       0, 'n'},
+        {"audit",       no_argument,       0, 'a'},
         {"baseline",    no_argument,       0, 'b'},
         {"learn",       no_argument,       0, 'l'},
         {"config",      no_argument,       0, 'c'},
         {"init-config", no_argument,       0, 'C'},
+        {"audit-learn", no_argument,       0, 'A'},
         {0, 0, 0, 0}
     };
     
-    while ((opt = getopt_long(argc, argv, "hqvjwi:nblcC", long_options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hqvjwi:nablcCA", long_options, NULL)) != -1) {
         switch (opt) {
             case 'h':
                 print_usage(argv[0]);
@@ -229,6 +367,9 @@ int main(int argc, char *argv[]) {
             case 'n':
                 network_mode = 1;
                 break;
+            case 'a':
+                audit_mode = 1;
+                break;
             case 'b':
                 baseline_mode = 1;
                 break;
@@ -240,6 +381,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'C':
                 init_config = 1;
+                break;
+            case 'A':
+                audit_learn = 1;
                 break;
             default:
                 print_usage(argv[0]);
@@ -262,6 +406,35 @@ int main(int argc, char *argv[]) {
     if (show_config) {
         config_print();
         return EXIT_OK;
+    }
+    
+    /* Handle --audit-learn */
+    if (audit_learn) {
+        printf("Learning audit baseline...\n");
+        audit_summary_t *audit = probe_audit(300);
+        if (!audit || !audit->enabled) {
+            fprintf(stderr, "Auditd not available. Install and configure auditd first.\n");
+            if (audit) free_audit_summary(audit);
+            return EXIT_ERROR;
+        }
+        
+        audit_baseline_t baseline = {0};
+        load_audit_baseline(&baseline);  /* Load existing if any */
+        update_audit_baseline(&baseline, audit);
+        
+        if (save_audit_baseline(&baseline)) {
+            printf("Audit baseline saved.\n");
+            printf("  Samples: %u\n", baseline.sample_count);
+            printf("  Avg auth failures: %.2f\n", baseline.avg_auth_failures);
+            printf("  Avg sudo commands: %.2f\n", baseline.avg_sudo_count);
+            printf("  Avg sensitive file access: %.2f\n", baseline.avg_sensitive_access);
+            free_audit_summary(audit);
+            return EXIT_OK;
+        } else {
+            fprintf(stderr, "Failed to save audit baseline\n");
+            free_audit_summary(audit);
+            return EXIT_ERROR;
+        }
     }
     
     /* Determine config files to probe */
@@ -343,6 +516,13 @@ int main(int argc, char *argv[]) {
         int deviations = baseline_compare(&baseline, &fp, &report);
         baseline_print_report(&baseline, &report);
         
+        /* Also show audit if requested */
+        if (audit_mode) {
+            audit_summary_t *audit = probe_audit(300);
+            print_audit_summary_quick(audit);
+            if (audit) free_audit_summary(audit);
+        }
+        
         if (deviations > 0) {
             return EXIT_CRITICAL;
         }
@@ -356,14 +536,18 @@ int main(int argc, char *argv[]) {
         signal(SIGTERM, signal_handler);
         
         fprintf(stderr, "C-Sentinel v%s - Watch Mode (Ctrl+C to stop)\n", SENTINEL_VERSION);
-        fprintf(stderr, "Interval: %d seconds\n\n", interval);
+        fprintf(stderr, "Interval: %d seconds\n", interval);
+        if (audit_mode) {
+            fprintf(stderr, "Audit: enabled\n");
+        }
+        fprintf(stderr, "\n");
         
         int worst_exit = EXIT_OK;
         
         while (keep_running) {
             print_timestamp();
             int exit_code = run_analysis(configs, config_count, 
-                                         quick_mode || 1, json_mode, network_mode);
+                                         quick_mode || 1, json_mode, network_mode, audit_mode);
             
             if (exit_code > worst_exit) worst_exit = exit_code;
             
@@ -384,5 +568,5 @@ int main(int argc, char *argv[]) {
     }
     
     /* One-shot mode */
-    return run_analysis(configs, config_count, quick_mode, json_mode, network_mode);
+    return run_analysis(configs, config_count, quick_mode, json_mode, network_mode, audit_mode);
 }

@@ -233,14 +233,14 @@ network_by_default = false
                               │ JSON via HTTP POST
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│                    Python Orchestration                      │
+│                    Python Orchestration                     │
 │  • API communication        • Response parsing              │
 │  • Policy validation        • User interface                │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     C Foundation                             │
+│                     C Foundation                            │
 │  • /proc parsing            • SHA256 checksums              │
 │  • Process analysis         • Drift detection               │
 │  • Network probing          • Baseline learning             │
