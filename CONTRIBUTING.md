@@ -11,7 +11,7 @@ Found a bug? Please open an issue with:
 - A clear, descriptive title
 - Steps to reproduce the problem
 - Expected vs actual behaviour
-- Your environment (OS, kernel version, compiler)
+- Your environment (OS, kernel version, compiler, locale)
 - Any relevant output or error messages
 
 ### 💡 Suggesting Features
@@ -53,6 +53,24 @@ if (condition) {
 }
 ```
 
+### File Headers
+
+All source files should include the standard header block:
+
+```c
+/*
+ * C-Sentinel - Semantic Observability for UNIX Systems
+ * Copyright (c) 2025 William Murray
+ *
+ * Licensed under the MIT License.
+ * See LICENSE file for details.
+ *
+ * https://github.com/williamofai/c-sentinel
+ *
+ * filename.c - Brief description of this file's purpose
+ */
+```
+
 ### Compiler Flags
 
 All code must compile cleanly with:
@@ -69,6 +87,43 @@ No warnings allowed. This is non-negotiable.
 - Define `MAX_*` limits for all arrays
 - No dynamic allocation where static will do
 
+### Locale Awareness
+
+When working with dates/times for external tools (like `ausearch`), use locale-aware formatting:
+```c
+/* Good - respects system locale */
+strftime(datebuf, sizeof(datebuf), "%x", tm);
+
+/* Bad - assumes US date format */
+snprintf(buf, size, "%02d/%02d/%04d", month, day, year);
+```
+
+## Project Structure
+
+```
+c-sentinel/
+├── include/
+│   ├── sentinel.h        # Core data structures
+│   ├── audit.h           # Audit integration types
+│   ├── policy.h          # Policy engine
+│   └── sanitize.h        # PII sanitization
+├── src/
+│   ├── main.c            # CLI entry point
+│   ├── prober.c          # System probing (/proc)
+│   ├── net_probe.c       # Network probing
+│   ├── audit.c           # Auditd log parsing
+│   ├── audit_json.c      # Audit JSON serialisation
+│   ├── process_chain.c   # Process ancestry walking
+│   ├── baseline.c        # Baseline learning
+│   ├── sha256.c          # Pure C SHA256
+│   └── ...
+├── dashboard/            # Flask web dashboard
+│   ├── app.py            # Main Flask application
+│   └── templates/        # HTML templates
+└── docs/
+    └── AUDIT_SPEC.md     # Audit integration design
+```
+
 ## Areas Where Help is Wanted
 
 We'd particularly welcome contributions in:
@@ -80,8 +135,12 @@ We'd particularly welcome contributions in:
 | **Sanitization patterns** | New PII/secret detection patterns |
 | **Documentation** | Examples, tutorials, translations |
 | **Testing** | Edge cases, failure modes, fuzzing |
+| **Dashboard** | UI improvements, new visualisations |
+| **Alerting** | Slack/Teams webhooks, PagerDuty integration |
 
 ## Development Setup
+
+### C Prober
 
 ```bash
 # Clone your fork
@@ -97,6 +156,25 @@ make test
 # Run with debug symbols
 make DEBUG=1
 ./bin/sentinel --quick
+
+# Test with audit (requires root)
+sudo ./bin/sentinel --quick --network --audit
+```
+
+### Dashboard
+
+```bash
+cd dashboard
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install flask psycopg2-binary gunicorn
+
+# Run development server
+FLASK_DEBUG=1 python app.py
 ```
 
 ## Commit Messages
@@ -119,8 +197,20 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 
 1. Update the README.md if you've added features
 2. Update DESIGN_DECISIONS.md if you've made architectural choices
-3. Ensure all tests pass and code compiles cleanly
-4. Your PR will be reviewed by a maintainer
+3. Add standard header block to any new source files
+4. Ensure all tests pass and code compiles cleanly
+5. Your PR will be reviewed by a maintainer
+
+## Testing Checklist
+
+Before submitting:
+
+- [ ] `make clean && make` completes with no warnings
+- [ ] `make test` passes
+- [ ] JSON output is valid (`sentinel --json | python3 -m json.tool`)
+- [ ] Audit features tested with root (`sudo ./bin/sentinel --audit`)
+- [ ] Dashboard changes tested in browser
+- [ ] Documentation updated if behaviour changed
 
 ## Questions?
 

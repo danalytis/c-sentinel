@@ -2,27 +2,31 @@
 
 **Semantic Observability for UNIX Systems**
 
-A lightweight, portable system prober written in C that captures "system fingerprints" for AI-assisted analysis of non-obvious risks. Now with auditd integration and a live web dashboard.
+A lightweight, portable system prober written in C that captures "system fingerprints" for AI-assisted analysis of non-obvious risks. Features auditd integration, explainable risk scoring, and a live web dashboard with email alerts.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-![Version](https://img.shields.io/badge/version-0.4.0-blue)
+![Version](https://img.shields.io/badge/version-0.5.5-blue)
 
 **Live Demo**: [sentinel.speytech.com](https://sentinel.speytech.com)
 
-![Dashboard Screenshot](docs/main-dashboard.png)
+![Dashboard Screenshot](docs/dashboard-security.png)
 
-## What's New in v0.4.0
+## What's New in v0.5.x
 
-- 🔐 **Auditd Integration** - Security event summarisation with semantic analysis
-- 🚨 **Brute Force Detection** - Automatic detection of auth failure spikes
-- 👤 **Privacy-Preserving** - Username hashing protects identity while preserving patterns
-- 🔗 **Process Attribution** - Know *which process* accessed sensitive files
-- 📊 **Risk Scoring** - Deviation-aware scoring with baseline comparison
-- 🎯 **Process Chains** - Track process ancestry for context (best-effort)
+- 🛡️ **Security Posture Summary** - Plain English explanation of system security status
+- 📈 **Risk Trend Sparkline** - 24-hour risk score history at a glance
+- 🧠 **Learning Indicator** - Shows baseline calibration progress (Learning → Calibrating → Ready)
+- ❓ **"Why This Score?"** - Explainable risk factors with weighted contributions
+- 📧 **Email Alerts** - Automatic notifications for high-risk events
+- 🔐 **Dashboard Authentication** - Password-protected access
+- 📜 **Event History** - Timeline of security events with acknowledgement
+- ⏱️ **Locale-Aware Time Windows** - Proper incremental event tracking
 
 ### Previous Releases
 
-**v0.3.0**: Web Dashboard, SHA256 checksums, systemd service, baseline learning, network probe, watch mode, webhooks
+**v0.4.0**: Auditd integration, brute force detection, privacy-preserving username hashing, process attribution, risk scoring
+
+**v0.3.0**: Web Dashboard, SHA256 checksums, systemd service, baseline learning, network probe, watch mode
 
 ## The Problem
 
@@ -50,17 +54,58 @@ make
 # Quick analysis with security events (requires root for audit logs)
 sudo ./bin/sentinel --quick --network --audit
 
-# Learn baselines
+# Learn baselines (automatic with --audit flag)
 ./bin/sentinel --learn --network
-sudo ./bin/sentinel --audit-learn
 
 # Continuous monitoring with full context
 sudo ./bin/sentinel --watch --interval 300 --network --audit
 ```
 
+## Dashboard Features
+
+The web dashboard provides real-time security monitoring across your infrastructure.
+
+### Security Posture Summary
+
+Plain English explanation of your system's security status:
+
+> "This system shows no security concerns. Authentication patterns are normal with no failures detected. No privilege escalation activity detected. Overall posture: **HEALTHY**."
+
+### Explainable Risk Scoring
+
+Every risk score includes factors that explain *why*:
+
+| Factor | Weight |
+|--------|--------|
+| 10 authentication failures (200% above baseline - high) | +30 |
+| Brute force attack pattern detected | +10 |
+| 2 sensitive file(s) accessed | +4 |
+| **Total** | **44** |
+
+### Learning/Calibration Indicator
+
+The system learns what's "normal" for your environment:
+
+| Samples | Status | Meaning |
+|---------|--------|---------|
+| < 10 | 🧠 Learning | Building initial baseline |
+| 10-50 | 🧠 Calibrating | Refining normal patterns |
+| > 50 | *(hidden)* | Fully calibrated |
+
+### Risk Trend Sparkline
+
+A mini chart showing 24-hour risk score history - instantly see if things are getting better or worse.
+
+### Email Alerts
+
+Automatic notifications when:
+- Risk score ≥ 16 (high/critical)
+- Brute force attack detected
+- Executions from /tmp or /dev/shm
+
 ## Auditd Integration
 
-C-Sentinel can summarise auditd logs for semantic security analysis.
+C-Sentinel summarises auditd logs for semantic security analysis.
 
 ### Example Output
 
@@ -109,6 +154,8 @@ Security (audit):
     },
     "privilege_escalation": {
       "sudo_count": 81,
+      "sudo_baseline_avg": 12.5,
+      "sudo_deviation_pct": 548.0,
       "su_count": 5
     },
     "file_integrity": {
@@ -118,11 +165,19 @@ Security (audit):
           "access": "write",
           "count": 2,
           "process": "touch",
-          "process_chain": ["touch"],
+          "process_chain": ["touch", "bash", "sshd"],
           "suspicious": true
         }
       ]
     },
+    "learning": {
+      "sample_count": 42,
+      "confidence": "medium"
+    },
+    "risk_factors": [
+      {"reason": "6 auth failures (200% above baseline - high)", "weight": 18},
+      {"reason": "Brute force attack pattern detected", "weight": 10}
+    ],
     "risk_score": 25,
     "risk_level": "high"
   }
@@ -155,11 +210,17 @@ C-Sentinel includes a web dashboard for monitoring multiple hosts in real-time.
 
 ### Features
 
-- **Real-time host monitoring** - See all hosts at a glance
-- **Historical charts** - Memory and load over 24 hours  
-- **Network view** - All listening ports and connections
-- **Config tracking** - SHA256 checksums of monitored files
-- **Multi-host support** - Monitor your entire fleet
+- **Security Posture Summary** - Plain English system status
+- **Risk Trend Sparkline** - 24-hour visual history
+- **Explainable Risk Factors** - Know *why* the score is what it is
+- **Learning Indicator** - Baseline calibration progress
+- **Event History** - Timeline with acknowledgement
+- **Email Alerts** - Proactive notifications
+- **Real-time Monitoring** - All hosts at a glance
+- **Historical Charts** - Memory and load over 24 hours
+- **Network View** - All listening ports and connections
+- **Config Tracking** - SHA256 checksums of monitored files
+- **Authentication** - Password-protected access
 
 ### Quick Setup
 
@@ -173,6 +234,21 @@ sudo ./install-dashboard.sh
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_KEY" \
   -d @- https://your-dashboard.com/api/ingest
+```
+
+### Email Alert Configuration
+
+Add to your systemd service or environment:
+
+```bash
+ALERT_EMAIL_ENABLED=true
+ALERT_SMTP_HOST=smtp.gmail.com
+ALERT_SMTP_PORT=587
+ALERT_SMTP_USER=your@email.com
+ALERT_SMTP_PASS=your-app-password
+ALERT_FROM=your@email.com
+ALERT_TO=alerts@email.com
+ALERT_COOLDOWN_MINS=60
 ```
 
 See [dashboard/README.md](dashboard/README.md) for full setup instructions.
@@ -242,27 +318,31 @@ sudo journalctl -u sentinel -f
 ### Security Issues (with --audit)
 - 🔐 **Brute force**: Auth failure spikes (>5 in window)
 - 📊 **Baseline deviation**: Activity significantly above normal
-- 📁 **Sensitive file access**: /etc/shadow, /etc/sudoers modifications
+- 📝 **Sensitive file access**: /etc/shadow, /etc/sudoers modifications
 - ⚠️ **Suspicious processes**: Unusual process accessing sensitive files
+- 💀 **Malware indicators**: Executions from /tmp or /dev/shm
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Web Dashboard                          │
-│  • Multi-host view          • Historical charts             │
-│  • Network listeners        • Security summary              │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      Web Dashboard                               │
+│  • Security posture summary    • Risk trend sparkline           │
+│  • Explainable risk factors    • Email alerts                   │
+│  • Event history timeline      • Learning indicator             │
+│  • Multi-host view             • Historical charts              │
+└─────────────────────────────────────────────────────────────────┘
                               ▲
                               │ JSON via HTTP POST
                               │
-┌─────────────────────────────────────────────────────────────┐
-│                     C Foundation (99KB)                     │
-│  • /proc parsing            • SHA256 checksums              │
-│  • Process analysis         • Drift detection               │
-│  • Network probing          • Baseline learning             │
-│  • Auditd parsing           • Risk scoring                  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     C Foundation (99KB)                          │
+│  • /proc parsing              • SHA256 checksums                │
+│  • Process analysis           • Drift detection                 │
+│  • Network probing            • Baseline learning               │
+│  • Auditd parsing             • Risk scoring                    │
+│  • Process chains             • Anomaly detection               │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Why C?
@@ -309,7 +389,8 @@ c-sentinel/
 ├── dashboard/            # Flask web dashboard
 ├── deploy/               # Systemd service files
 └── docs/
-    └── AUDIT_SPEC.md     # Audit integration design
+    ├── AUDIT_SPEC.md     # Audit integration design
+    └── DESIGN_DECISIONS.md
 ```
 
 ## Roadmap
@@ -322,15 +403,23 @@ c-sentinel/
 - [x] SHA256 checksums
 - [x] Systemd service
 - [x] Web dashboard
-- [x] **Auditd integration**
-- [x] **Risk scoring with deviation analysis**
-- [x] **Process attribution**
+- [x] Auditd integration
+- [x] Risk scoring with deviation analysis
+- [x] Process attribution
+- [x] **Dashboard authentication**
+- [x] **Event history timeline**
+- [x] **Explainable risk factors**
+- [x] **Security posture summary**
+- [x] **Risk trend sparkline**
+- [x] **Learning/calibration indicator**
+- [x] **Email alerts**
 
 ### Planned 📋
-- [x] **Dashboard Security tab**
-- [ ] Dashboard authentication
-- [ ] Email alerts
 - [ ] FreeBSD/macOS support
+- [ ] Multi-user dashboard with roles
+- [ ] Slack/Teams webhook alerts
+- [ ] Custom alert rules
+- [ ] PDF security reports
 
 ## License
 

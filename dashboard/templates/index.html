@@ -53,19 +53,25 @@
                     <p class="text-xs text-gray-400">Semantic Observability</p>
                 </div>
             </div>
-            <div id="stats" class="flex items-center space-x-6 text-sm">
-                <div class="text-center">
-                    <div id="stat-total" class="text-2xl font-bold">-</div>
-                    <div class="text-gray-400">Hosts</div>
+            <div class="flex items-center space-x-6">
+                <div id="stats" class="flex items-center space-x-6 text-sm">
+                    <div class="text-center">
+                        <div id="stat-total" class="text-2xl font-bold">-</div>
+                        <div class="text-gray-400">Hosts</div>
+                    </div>
+                    <div class="text-center">
+                        <div id="stat-active" class="text-2xl font-bold text-emerald-400">-</div>
+                        <div class="text-gray-400">Active</div>
+                    </div>
+                    <div class="text-center">
+                        <div id="stat-critical" class="text-2xl font-bold text-red-400">-</div>
+                        <div class="text-gray-400">Critical</div>
+                    </div>
                 </div>
-                <div class="text-center">
-                    <div id="stat-active" class="text-2xl font-bold text-emerald-400">-</div>
-                    <div class="text-gray-400">Active</div>
-                </div>
-                <div class="text-center">
-                    <div id="stat-critical" class="text-2xl font-bold text-red-400">-</div>
-                    <div class="text-gray-400">Critical</div>
-                </div>
+                <a href="/logout" class="text-gray-400 hover:text-white flex items-center text-sm">
+                    <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
+                    Logout
+                </a>
             </div>
         </div>
     </header>
@@ -101,7 +107,7 @@
     <!-- Footer -->
     <footer class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 py-2 px-4">
         <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-gray-500">
-            <span>C-Sentinel v0.4.0</span>
+            <span>C-Sentinel v0.5.0</span>
             <span id="last-update">Last updated: -</span>
             <a href="https://github.com/williamofai/c-sentinel" class="hover:text-gray-300">
                 <i data-lucide="github" class="w-4 h-4 inline"></i> GitHub
@@ -170,13 +176,56 @@
                 `;
             }
             
-            // Brute force warning
+            // Cumulative audit totals (v0.4.1)
+            let auditTotals = '';
+            const hasAuditTotals = host.audit_enabled && (
+                (host.audit_auth_failures_total || 0) > 0 ||
+                (host.audit_sudo_count_total || 0) > 0 ||
+                (host.audit_sensitive_access_total || 0) > 0
+            );
+            
+            if (hasAuditTotals) {
+                const authTotal = host.audit_auth_failures_total || 0;
+                const sudoTotal = host.audit_sudo_count_total || 0;
+                const fileTotal = host.audit_sensitive_access_total || 0;
+                
+                // Determine color based on totals
+                let authClass = 'text-gray-400';
+                if (authTotal > 20) authClass = 'text-red-400';
+                else if (authTotal > 5) authClass = 'text-yellow-400';
+                
+                auditTotals = `
+                    <div class="mt-2 bg-gray-900 rounded p-2">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs text-gray-500">Security totals</span>
+                            <span class="text-xs text-gray-600">${host.audit_totals_since ? 'since ' + timeAgo(host.audit_totals_since) : ''}</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-1 text-xs">
+                            <div class="text-center">
+                                <div class="font-mono ${authClass}">${authTotal}</div>
+                                <div class="text-gray-500">auth fail</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="font-mono text-gray-400">${sudoTotal}</div>
+                                <div class="text-gray-500">sudo</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="font-mono ${fileTotal > 0 ? 'text-yellow-400' : 'text-gray-400'}">${fileTotal}</div>
+                                <div class="text-gray-500">file access</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Brute force warning - only show if count > 0 (colour fix)
             let bruteForceAlert = '';
-            if (host.audit_brute_force) {
+            const bruteCount = host.audit_brute_force_count || 0;
+            if (bruteCount > 0) {
                 bruteForceAlert = `
                     <div class="mt-1 text-xs text-red-400 flex items-center">
                         <i data-lucide="alert-octagon" class="w-3 h-3 mr-1"></i>
-                        Brute force detected
+                        Brute force detected (${bruteCount}x)
                     </div>
                 `;
             }
@@ -212,6 +261,7 @@
                     </div>
                     
                     ${riskBadge}
+                    ${auditTotals}
                     
                     ${host.zombie_count > 0 ? `
                         <div class="mt-2 text-xs text-red-400 flex items-center">
@@ -241,6 +291,10 @@
         async function loadHosts() {
             try {
                 const response = await fetch('/api/hosts');
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 const hosts = await response.json();
                 
                 const grid = document.getElementById('hosts-grid');
@@ -269,6 +323,7 @@
         async function loadStats() {
             try {
                 const response = await fetch('/api/stats');
+                if (response.status === 401) return;
                 const stats = await response.json();
                 
                 document.getElementById('stat-total').textContent = stats.total_hosts;

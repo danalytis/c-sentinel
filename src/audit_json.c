@@ -1,4 +1,12 @@
 /*
+ * C-Sentinel - Semantic Observability for UNIX Systems
+ * Copyright (c) 2025 William Murray
+ *
+ * Licensed under the MIT License.
+ * See LICENSE file for details.
+ *
+ * https://github.com/williamofai/c-sentinel
+ *
  * audit_json.c - JSON serialization for audit summary
  */
 
@@ -125,6 +133,26 @@ void audit_to_json(const audit_summary_t *summary, char *buf, size_t bufsize) {
         buf_append(buf, bufsize, &pos, "        \"deviation_pct\": %.1f\n", a->deviation_pct);
         buf_append(buf, bufsize, &pos, "      }%s\n",
                   i < summary->anomaly_count - 1 ? "," : "");
+    }
+    buf_append(buf, bufsize, &pos, "    ],\n");
+    
+    /* Learning/confidence status */
+    buf_append(buf, bufsize, &pos, "    \"learning\": {\n");
+    buf_append(buf, bufsize, &pos, "      \"sample_count\": %d,\n", summary->baseline_sample_count);
+    buf_append(buf, bufsize, &pos, "      \"confidence\": \"%s\"\n", 
+              summary->baseline_sample_count < 5 ? "low" :
+              summary->baseline_sample_count < 20 ? "medium" : "high");
+    buf_append(buf, bufsize, &pos, "    },\n");
+    
+    /* Risk factors section */
+    buf_append(buf, bufsize, &pos, "    \"risk_factors\": [\n");
+    for (int i = 0; i < summary->risk_factor_count; i++) {
+        const risk_factor_t *rf = &summary->risk_factors[i];
+        buf_append(buf, bufsize, &pos, "      {\n");
+        buf_append(buf, bufsize, &pos, "        \"reason\": \"%s\",\n", rf->reason);
+        buf_append(buf, bufsize, &pos, "        \"weight\": %d\n", rf->weight);
+        buf_append(buf, bufsize, &pos, "      }%s\n",
+                  i < summary->risk_factor_count - 1 ? "," : "");
     }
     buf_append(buf, bufsize, &pos, "    ],\n");
     

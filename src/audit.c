@@ -1,5 +1,13 @@
 /*
- * audit.c - Auditd log parsing and summarisation for C-Sentinel
+ * C-Sentinel - Semantic Observability for UNIX Systems
+ * Copyright (c) 2025 William Murray
+ *
+ * Licensed under the MIT License.
+ * See LICENSE file for details.
+ *
+ * https://github.com/williamofai/c-sentinel
+ *
+ * audit.c - Auditd log parsing and summarisation
  * 
  * Uses ausearch for reliable event extraction, then summarises
  * for semantic analysis by LLMs.
@@ -28,6 +36,42 @@
 
 /* Salt for username hashing (generated once, stored in config) */
 static char username_salt[32] = "sentinel_default_salt";
+
+/* Global timestamp string for ausearch queries - set once per probe */
+static char g_ausearch_ts[64] = "today";
+
+/* ============================================================
+ * Time Window Management
+ * ============================================================ */
+
+/*
+ * Format a timestamp for ausearch -ts option
+ * ausearch uses locale-dependent date format (check with: date '+%x')
+ * Time format is always HH:MM:SS in 24-hour format
+ */
+static void format_ausearch_timestamp(time_t ts, char *buf, size_t bufsize) {
+    if (ts <= 0) {
+        snprintf(buf, bufsize, "recent");
+        return;
+    }
+    
+    struct tm *tm = localtime(&ts);
+    if (!tm) {
+        snprintf(buf, bufsize, "recent");
+        return;
+    }
+    
+    /* Use strftime with %x for locale-aware date format */
+    char datebuf[32];
+    strftime(datebuf, sizeof(datebuf), "%x", tm);
+    
+    snprintf(buf, bufsize, "%s %02d:%02d:%02d",
+             datebuf,
+             tm->tm_hour,
+             tm->tm_min,
+             tm->tm_sec);
+}
+
 
 /* ============================================================
  * Event Context Cache - correlate SYSCALL and PATH records
@@ -93,7 +137,7 @@ static void parse_syscall_context(int window_seconds) {
     (void)window_seconds;
     
     snprintf(cmd, sizeof(cmd),
-             "ausearch -m SYSCALL -ts today --format raw 2>/dev/null");
+             "ausearch -m SYSCALL -ts '%s' --format raw 2>/dev/null", g_ausearch_ts);
     
     fp = popen(cmd, "r");
     if (!fp) return;
@@ -207,7 +251,8 @@ static void parse_auth_events(audit_summary_t *summary, int window_seconds) {
     
     /* Use raw format for stable parsing */
     snprintf(cmd, sizeof(cmd), 
-             "ausearch -m USER_AUTH -ts today --format raw 2>/dev/null | grep -E 'res=(success|failed)' | tail -100 2>/dev/null");
+             "ausearch -m USER_AUTH -ts '%s' --format raw 2>/dev/null | grep -E 'res=(success|failed)' | tail -100 2>/dev/null",
+             g_ausearch_ts);
     
     fp = popen(cmd, "r");
     if (!fp) {
@@ -261,7 +306,8 @@ static void parse_priv_events(audit_summary_t *summary, int window_seconds) {
     
     /* Count sudo usage - raw format has exe="/usr/bin/sudo" with quotes */
     snprintf(cmd, sizeof(cmd),
-             "ausearch -m USER_CMD -ts today --format raw 2>/dev/null | grep -c 'exe=\"/usr/bin/sudo\"' 2>/dev/null");
+             "ausearch -m USER_CMD -ts '%s' --format raw 2>/dev/null | grep -c 'exe=\"/usr/bin/sudo\"' 2>/dev/null",
+             g_ausearch_ts);
     
     fp = popen(cmd, "r");
     if (fp) {
@@ -273,7 +319,8 @@ static void parse_priv_events(audit_summary_t *summary, int window_seconds) {
     
     /* Count su usage */
     snprintf(cmd, sizeof(cmd),
-             "ausearch -m USER_CMD -ts today --format raw 2>/dev/null | grep -c 'exe=\"/usr/bin/su\"' 2>/dev/null");
+             "ausearch -m USER_CMD -ts '%s' --format raw 2>/dev/null | grep -c 'exe=\"/usr/bin/su\"' 2>/dev/null",
+             g_ausearch_ts);
     
     fp = popen(cmd, "r");
     if (fp) {
@@ -297,7 +344,8 @@ static void parse_file_events(audit_summary_t *summary, int window_seconds) {
     
     /* Identity files (actual file access) - these have nametype=NORMAL */
     snprintf(cmd, sizeof(cmd),
-             "ausearch -k identity -ts today --format raw 2>/dev/null | grep 'type=PATH' | grep 'nametype=NORMAL' 2>/dev/null");
+             "ausearch -k identity -ts '%s' --format raw 2>/dev/null | grep 'type=PATH' | grep 'nametype=NORMAL' 2>/dev/null",
+             g_ausearch_ts);
     
     fp = popen(cmd, "r");
     if (!fp) {
@@ -394,11 +442,12 @@ static void parse_exec_events(audit_summary_t *summary, int window_seconds) {
     char line[1024];
     FILE *fp;
     
-    (void)window_seconds;  /* Could use for time filtering later */
+    (void)window_seconds;
     
     /* Look for execve syscalls with paths in /tmp or /dev/shm */
     snprintf(cmd, sizeof(cmd),
-             "ausearch -sc execve -ts today -i 2>/dev/null | grep -E 'name=(/tmp/|/dev/shm/)' 2>/dev/null");
+             "ausearch -sc execve -ts '%s' -i 2>/dev/null | grep -E 'name=(/tmp/|/dev/shm/)' 2>/dev/null",
+             g_ausearch_ts);
     
     fp = popen(cmd, "r");
     if (!fp) {
@@ -419,7 +468,8 @@ static void parse_exec_events(audit_summary_t *summary, int window_seconds) {
     
     /* Count shell spawns */
     snprintf(cmd, sizeof(cmd),
-             "ausearch -sc execve -ts today -i 2>/dev/null | grep -cE 'name=.*/bin/(ba)?sh' 2>/dev/null");
+             "ausearch -sc execve -ts '%s' -i 2>/dev/null | grep -cE 'name=.*/bin/(ba)?sh' 2>/dev/null",
+             g_ausearch_ts);
     
     fp = popen(cmd, "r");
     if (fp) {
@@ -437,6 +487,7 @@ static void parse_exec_events(audit_summary_t *summary, int window_seconds) {
 static void check_security_framework(audit_summary_t *summary) {
     FILE *fp;
     char line[256];
+    char cmd[512];
     
     /* Check SELinux */
     fp = fopen("/sys/fs/selinux/enforce", "r");
@@ -447,7 +498,10 @@ static void check_security_framework(audit_summary_t *summary) {
         fclose(fp);
         
         /* Count AVC denials */
-        fp = popen("ausearch -m AVC -ts today 2>/dev/null | grep -c 'denied' 2>/dev/null", "r");
+        snprintf(cmd, sizeof(cmd),
+                 "ausearch -m AVC -ts '%s' 2>/dev/null | grep -c 'denied' 2>/dev/null",
+                 g_ausearch_ts);
+        fp = popen(cmd, "r");
         if (fp) {
             if (fgets(line, sizeof(line), fp)) {
                 summary->selinux_avc_denials = atoi(line);
@@ -457,7 +511,10 @@ static void check_security_framework(audit_summary_t *summary) {
     }
     
     /* Check AppArmor */
-    fp = popen("ausearch -m APPARMOR_DENIED -ts today 2>/dev/null | wc -l 2>/dev/null", "r");
+    snprintf(cmd, sizeof(cmd),
+             "ausearch -m APPARMOR_DENIED -ts '%s' 2>/dev/null | wc -l 2>/dev/null",
+             g_ausearch_ts);
+    fp = popen(cmd, "r");
     if (fp) {
         if (fgets(line, sizeof(line), fp)) {
             summary->apparmor_denials = atoi(line);
@@ -569,50 +626,173 @@ static void detect_anomalies(audit_summary_t *summary, const audit_baseline_t *b
 }
 
 
+/* ============================================================
+ * Risk Factor Tracking - v0.5.1
+ * ============================================================ */
+
+/* Helper to add a risk factor */
+static void add_risk_factor(audit_summary_t *summary, const char *reason, int weight) {
+    if (summary->risk_factor_count >= MAX_RISK_FACTORS) return;
+    if (weight <= 0) return;  /* Only track positive contributions */
+    
+    risk_factor_t *rf = &summary->risk_factors[summary->risk_factor_count++];
+    snprintf(rf->reason, RISK_FACTOR_REASON_LEN, "%s", reason);
+    rf->weight = weight;
+}
+
+
 /*
  * Calculate risk score based on findings
+ * Tracks factors that explain the score
  */
 void calculate_risk_score(audit_summary_t *summary) {
     int score = 0;
+    int factor_score;
+    char reason[RISK_FACTOR_REASON_LEN];
     
-    /* Authentication */
-    score += summary->auth_failures * 1;
-    if (summary->brute_force_detected) score += 10;
+    /* Reset factors */
+    summary->risk_factor_count = 0;
     
-    /* Apply deviation multiplier */
-    if (summary->auth_deviation_pct > 500.0f) {
-        score = (int)(score * 5.0f);
-    } else if (summary->auth_deviation_pct > 200.0f) {
-        score = (int)(score * 3.0f);
-    } else if (summary->auth_deviation_pct > 100.0f) {
-        score = (int)(score * 2.0f);
+    /* Authentication failures */
+    if (summary->auth_failures > 0) {
+        factor_score = summary->auth_failures * 1;
+        
+        /* Apply deviation multiplier */
+        if (summary->auth_deviation_pct > 500.0f) {
+            factor_score = (int)(factor_score * 5.0f);
+            snprintf(reason, sizeof(reason), 
+                    "%d auth failures (%.0f%% above baseline - critical)", 
+                    summary->auth_failures, summary->auth_deviation_pct);
+        } else if (summary->auth_deviation_pct > 200.0f) {
+            factor_score = (int)(factor_score * 3.0f);
+            snprintf(reason, sizeof(reason), 
+                    "%d auth failures (%.0f%% above baseline - high)", 
+                    summary->auth_failures, summary->auth_deviation_pct);
+        } else if (summary->auth_deviation_pct > 100.0f) {
+            factor_score = (int)(factor_score * 2.0f);
+            snprintf(reason, sizeof(reason), 
+                    "%d auth failures (%.0f%% above baseline)", 
+                    summary->auth_failures, summary->auth_deviation_pct);
+        } else {
+            snprintf(reason, sizeof(reason), "%d authentication failures", 
+                    summary->auth_failures);
+        }
+        
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
     }
     
-    /* Privilege escalation */
-    /* sudo is generally normal, but high deviation is concerning */
+    /* Brute force detection */
+    if (summary->brute_force_detected) {
+        add_risk_factor(summary, "Brute force attack pattern detected", 10);
+        score += 10;
+    }
+    
+    /* Privilege escalation - sudo deviation */
     if (summary->sudo_deviation_pct > 200.0f) {
+        snprintf(reason, sizeof(reason), 
+                "Sudo usage %.0f%% above baseline (%d commands)", 
+                summary->sudo_deviation_pct, summary->sudo_count);
+        add_risk_factor(summary, reason, 5);
         score += 5;
     }
-    score += summary->su_count * 2;
     
-    /* File integrity */
-    score += summary->permission_changes * 3;
-    score += summary->ownership_changes * 3;
+    /* su usage */
+    if (summary->su_count > 0) {
+        factor_score = summary->su_count * 2;
+        snprintf(reason, sizeof(reason), "%d su command(s) executed", summary->su_count);
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
+    }
+    
+    /* File integrity - permission changes */
+    if (summary->permission_changes > 0) {
+        factor_score = summary->permission_changes * 3;
+        snprintf(reason, sizeof(reason), "%d file permission change(s)", 
+                summary->permission_changes);
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
+    }
+    
+    /* File integrity - ownership changes */
+    if (summary->ownership_changes > 0) {
+        factor_score = summary->ownership_changes * 3;
+        snprintf(reason, sizeof(reason), "%d file ownership change(s)", 
+                summary->ownership_changes);
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
+    }
+    
+    /* Sensitive file access */
+    int suspicious_file_count = 0;
     for (int i = 0; i < summary->sensitive_file_count; i++) {
-        score += 2;
         if (summary->sensitive_files[i].suspicious) {
-            score += 5;
+            suspicious_file_count++;
         }
     }
     
-    /* Process activity */
-    score += summary->tmp_executions * 4;
-    score += summary->devshm_executions * 6;
-    score += summary->suspicious_exec_count * 10;
+    if (summary->sensitive_file_count > 0) {
+        factor_score = summary->sensitive_file_count * 2;
+        if (suspicious_file_count > 0) {
+            factor_score += suspicious_file_count * 5;
+            snprintf(reason, sizeof(reason), 
+                    "%d sensitive file access (%d suspicious)", 
+                    summary->sensitive_file_count, suspicious_file_count);
+        } else {
+            snprintf(reason, sizeof(reason), 
+                    "%d sensitive file(s) accessed", summary->sensitive_file_count);
+        }
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
+    }
     
-    /* Security framework */
-    score += summary->selinux_avc_denials * 1;
-    score += summary->apparmor_denials * 1;
+    /* Process activity - /tmp executions */
+    if (summary->tmp_executions > 0) {
+        factor_score = summary->tmp_executions * 4;
+        snprintf(reason, sizeof(reason), 
+                "%d execution(s) from /tmp (potential malware)", 
+                summary->tmp_executions);
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
+    }
+    
+    /* Process activity - /dev/shm executions */
+    if (summary->devshm_executions > 0) {
+        factor_score = summary->devshm_executions * 6;
+        snprintf(reason, sizeof(reason), 
+                "%d execution(s) from /dev/shm (highly suspicious)", 
+                summary->devshm_executions);
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
+    }
+    
+    /* Suspicious process executions */
+    if (summary->suspicious_exec_count > 0) {
+        factor_score = summary->suspicious_exec_count * 10;
+        snprintf(reason, sizeof(reason), 
+                "%d suspicious process execution(s)", 
+                summary->suspicious_exec_count);
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
+    }
+    
+    /* Security framework - SELinux denials */
+    if (summary->selinux_avc_denials > 0) {
+        factor_score = summary->selinux_avc_denials * 1;
+        snprintf(reason, sizeof(reason), "%d SELinux AVC denial(s)", 
+                summary->selinux_avc_denials);
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
+    }
+    
+    /* Security framework - AppArmor denials */
+    if (summary->apparmor_denials > 0) {
+        factor_score = summary->apparmor_denials * 1;
+        snprintf(reason, sizeof(reason), "%d AppArmor denial(s)", 
+                summary->apparmor_denials);
+        add_risk_factor(summary, reason, factor_score);
+        score += factor_score;
+    }
     
     summary->risk_score = score;
     
@@ -761,6 +941,20 @@ audit_summary_t* probe_audit(int window_seconds) {
         return summary;
     }
     
+    /* Load baseline to get last probe time for time window */
+    audit_baseline_t baseline = {0};
+    bool has_baseline = load_audit_baseline(&baseline);
+    
+    /* Set global timestamp for ausearch queries
+     * Use last probe time if available, otherwise use 'recent' (10 mins)
+     */
+    if (has_baseline && baseline.updated > 0) {
+        format_ausearch_timestamp(baseline.updated, g_ausearch_ts, sizeof(g_ausearch_ts));
+    } else {
+        /* First run or no baseline - use 'recent' (last 10 minutes) */
+        strcpy(g_ausearch_ts, "recent");
+    }
+    
     /* Build SYSCALL context first (for process correlation) */
     clear_event_ctx();
     parse_syscall_context(window_seconds);
@@ -775,10 +969,12 @@ audit_summary_t* probe_audit(int window_seconds) {
     /* Clean up event context */
     clear_event_ctx();
     
-    /* Load baseline and detect anomalies */
-    audit_baseline_t baseline = {0};
-    if (load_audit_baseline(&baseline)) {
+    /* Detect anomalies using baseline */
+    if (has_baseline) {
         detect_anomalies(summary, &baseline);
+        summary->baseline_sample_count = baseline.sample_count;
+    } else {
+        summary->baseline_sample_count = 0;
     }
     
     /* Calculate overall risk score */

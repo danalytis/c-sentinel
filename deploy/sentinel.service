@@ -1,37 +1,47 @@
 [Unit]
-Description=C-Sentinel System Monitor with Audit Integration
+Description=C-Sentinel Dashboard
 Documentation=https://github.com/williamofai/c-sentinel
-After=network.target auditd.service
-Wants=auditd.service
+After=network.target postgresql.service
+Wants=postgresql.service
 
 [Service]
-Type=oneshot
-ExecStart=/usr/local/bin/sentinel --json --network --audit
-User=root
-Group=root
+Type=simple
+ExecStart=/opt/sentinel-dashboard/venv/bin/gunicorn -b 127.0.0.1:5000 app:app
+WorkingDirectory=/opt/sentinel-dashboard
+User=sentinel
+Group=sentinel
+
+# Environment - CHANGE THESE VALUES
+# Generate secret key with: python3 -c "import secrets; print(secrets.token_hex(32))"
+Environment="FLASK_SECRET_KEY=CHANGE_ME_generate_with_secrets_token_hex_32"
+
+# Generate password hash with: echo -n 'yourpassword' | sha256sum | cut -d' ' -f1
+Environment="SENTINEL_ADMIN_PASSWORD_HASH=CHANGE_ME_sha256_hash_of_your_password"
+
+# Email alerting (optional - set ALERT_EMAIL_ENABLED=false to disable)
+Environment=ALERT_EMAIL_ENABLED=false
+Environment=ALERT_SMTP_HOST=smtp.gmail.com
+Environment=ALERT_SMTP_PORT=587
+Environment=ALERT_SMTP_USER=your-email@gmail.com
+Environment="ALERT_SMTP_PASS=your-app-password"
+Environment=ALERT_FROM=your-email@gmail.com
+Environment=ALERT_TO=alerts@your-domain.com
+Environment=ALERT_COOLDOWN_MINS=60
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
 
 # Security hardening
 NoNewPrivileges=yes
-ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-
-# Allow reading audit logs
-ReadOnlyPaths=/var/log/audit
-
-# Allow writing baseline data
-ReadWritePaths=/var/lib/sentinel
-
-# Exit codes 0, 1, 2 are all "success" (only 3 = error triggers restart)
-SuccessExitStatus=0 1 2
 
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=sentinel
+SyslogIdentifier=sentinel-dashboard
 
 [Install]
 WantedBy=multi-user.target
+

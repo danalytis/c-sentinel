@@ -1,0 +1,33 @@
+[Unit]
+Description=C-Sentinel Dashboard
+Documentation=https://github.com/williamofai/c-sentinel
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/sentinel-dashboard/app.py
+WorkingDirectory=/opt/sentinel-dashboard
+User=sentinel
+Group=sentinel
+
+# Environment
+Environment="FLASK_SECRET_KEY=CHANGE_ME_TO_RANDOM_64_CHAR_HEX"
+Environment="SENTINEL_ADMIN_PASSWORD_HASH=CHANGE_ME_TO_SHA256_HASH"
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectHome=read-only
+PrivateTmp=yes
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentinel-dashboard
+
+[Install]
+WantedBy=multi-user.target

@@ -25,31 +25,44 @@
             height: 200px;
             width: 100%;
         }
+        
+        .event-type-auth_failure { border-left-color: #ef4444; }
+        .event-type-brute_force { border-left-color: #dc2626; }
+        .event-type-sudo { border-left-color: #3b82f6; }
+        .event-type-file_access { border-left-color: #f59e0b; }
+        .event-type-selinux_denial { border-left-color: #8b5cf6; }
+        .event-type-apparmor_denial { border-left-color: #8b5cf6; }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
     <!-- Header -->
     <header class="bg-gray-800 border-b border-gray-700">
         <div class="max-w-7xl mx-auto px-4 py-4">
-            <div class="flex items-center space-x-4">
-                <a href="/" class="text-gray-400 hover:text-white">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <a href="/" class="text-gray-400 hover:text-white">
+                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                    </a>
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
+                            <i data-lucide="server" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold">{{ hostname }}</h1>
+                            <p id="host-status" class="text-xs text-gray-400">Loading...</p>
+                        </div>
+                    </div>
+                    <!-- Risk Badge -->
+                    <div id="risk-badge" class="hidden ml-4">
+                        <span class="px-3 py-1 rounded-full text-sm font-semibold">
+                            Risk: <span id="risk-level">-</span>
+                        </span>
+                    </div>
+                </div>
+                <a href="/logout" class="text-gray-400 hover:text-white flex items-center text-sm">
+                    <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
+                    Logout
                 </a>
-                <div class="flex items-center space-x-3">
-                    <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
-                        <i data-lucide="server" class="w-6 h-6"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-xl font-bold">{{ hostname }}</h1>
-                        <p id="host-status" class="text-xs text-gray-400">Loading...</p>
-                    </div>
-                </div>
-                <!-- Risk Badge -->
-                <div id="risk-badge" class="hidden ml-auto">
-                    <span class="px-3 py-1 rounded-full text-sm font-semibold">
-                        Risk: <span id="risk-level">-</span>
-                    </span>
-                </div>
             </div>
         </div>
     </header>
@@ -106,20 +119,23 @@
 
         <!-- Tabs -->
         <div class="mb-6">
-            <div class="flex space-x-4 border-b border-gray-700">
-                <button onclick="showTab('security')" id="tab-security" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-emerald-500 text-emerald-400">
+            <div class="flex space-x-4 border-b border-gray-700 overflow-x-auto">
+                <button onclick="showTab('security')" id="tab-security" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-emerald-500 text-emerald-400 whitespace-nowrap">
                     <i data-lucide="shield" class="w-4 h-4 inline mr-1"></i>Security
                 </button>
-                <button onclick="showTab('network')" id="tab-network" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                <button onclick="showTab('events')" id="tab-events" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white whitespace-nowrap">
+                    <i data-lucide="history" class="w-4 h-4 inline mr-1"></i>Event History
+                </button>
+                <button onclick="showTab('network')" id="tab-network" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white whitespace-nowrap">
                     Network
                 </button>
-                <button onclick="showTab('processes')" id="tab-processes" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                <button onclick="showTab('processes')" id="tab-processes" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white whitespace-nowrap">
                     Processes
                 </button>
-                <button onclick="showTab('configs')" id="tab-configs" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                <button onclick="showTab('configs')" id="tab-configs" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white whitespace-nowrap">
                     Configs
                 </button>
-                <button onclick="showTab('raw')" id="tab-raw" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                <button onclick="showTab('raw')" id="tab-raw" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white whitespace-nowrap">
                     Raw JSON
                 </button>
             </div>
@@ -135,146 +151,276 @@
             </div>
             
             <div id="security-content" class="space-y-6">
+                <!-- Security Posture Summary -->
+                <div id="posture-summary" class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                    <div class="flex items-start space-x-4">
+                        <div id="posture-icon" class="flex-shrink-0 w-12 h-12 rounded-full bg-emerald-900/50 flex items-center justify-center">
+                            <i data-lucide="shield-check" class="w-6 h-6 text-emerald-400"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-2 mb-2">
+                                <h3 class="text-lg font-semibold">Security Posture</h3>
+                                <span id="posture-badge" class="px-2 py-0.5 rounded text-xs font-bold bg-emerald-900/50 text-emerald-400 border border-emerald-700/50">HEALTHY</span>
+                            </div>
+                            <p id="posture-text" class="text-gray-300 leading-relaxed">
+                                Analyzing security posture...
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Risk Score Card -->
                 <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-semibold">Security Risk Assessment</h3>
-                        <div id="risk-score-badge" class="px-4 py-2 rounded-lg text-lg font-bold">
-                            Score: <span id="security-score">-</span>
+                        <div class="flex items-center space-x-3">
+                            <h3 class="text-lg font-semibold">Security Risk Assessment</h3>
+                            <div id="learning-badge" class="hidden px-2 py-1 rounded text-xs font-medium bg-blue-900/50 text-blue-300 border border-blue-700/50">
+                                <span class="inline-flex items-center">
+                                    <i data-lucide="brain" class="w-3 h-3 mr-1"></i>
+                                    <span id="learning-label">Learning</span>:&nbsp;<span id="sample-count">0</span>&nbsp;samples
+                                </span>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <div class="flex items-center space-x-2">
+                                <canvas id="risk-sparkline" width="100" height="30" class="opacity-75"></canvas>
+                                <span class="text-xs text-gray-500">24h</span>
+                            </div>
+                            <div id="risk-score-badge" class="px-4 py-2 rounded-lg text-lg font-bold">
+                                Score: <span id="security-score">-</span>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div class="bg-gray-900 rounded-lg p-4">
-                            <div class="text-gray-400 text-xs mb-1">Auth Failures</div>
-                            <div id="sec-auth-failures" class="text-2xl font-mono">-</div>
+                    <!-- Current Period Stats -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <div class="bg-gray-900 rounded p-3">
+                            <div class="text-gray-400 text-xs mb-1">Auth Failures (recent)</div>
+                            <div id="sec-auth-failures" class="text-xl font-mono">-</div>
                         </div>
-                        <div class="bg-gray-900 rounded-lg p-4">
-                            <div class="text-gray-400 text-xs mb-1">Sudo Commands</div>
-                            <div id="sec-sudo-count" class="text-2xl font-mono">-</div>
+                        <div class="bg-gray-900 rounded p-3">
+                            <div class="text-gray-400 text-xs mb-1">Sudo Commands (recent)</div>
+                            <div id="sec-sudo-count" class="text-xl font-mono">-</div>
                         </div>
-                        <div class="bg-gray-900 rounded-lg p-4">
-                            <div class="text-gray-400 text-xs mb-1">File Access</div>
-                            <div id="sec-file-access" class="text-2xl font-mono">-</div>
+                        <div class="bg-gray-900 rounded p-3">
+                            <div class="text-gray-400 text-xs mb-1">File Access (recent)</div>
+                            <div id="sec-file-access" class="text-xl font-mono">-</div>
                         </div>
-                        <div class="bg-gray-900 rounded-lg p-4">
+                        <div class="bg-gray-900 rounded p-3">
                             <div class="text-gray-400 text-xs mb-1">SELinux Denials</div>
-                            <div id="sec-selinux" class="text-2xl font-mono">-</div>
+                            <div id="sec-selinux" class="text-xl font-mono">-</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Cumulative Totals -->
+                    <div id="cumulative-totals" class="bg-gray-900 rounded-lg p-4 mb-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <h4 class="text-sm font-semibold">Cumulative Totals</h4>
+                                <p id="totals-since" class="text-xs text-gray-500">Since: -</p>
+                            </div>
+                            <button id="reset-btn" onclick="resetAuditTotals()" 
+                                    class="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center"
+                                    title="Reset counters (marks events as acknowledged)">
+                                <i data-lucide="refresh-cw" class="w-3 h-3 mr-1"></i>
+                                Reset
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-4 gap-4">
+                            <div class="text-center">
+                                <div id="total-auth-failures" class="text-2xl font-mono text-gray-400">0</div>
+                                <div class="text-xs text-gray-500">Auth Failures</div>
+                            </div>
+                            <div class="text-center">
+                                <div id="total-sudo-count" class="text-2xl font-mono text-gray-400">0</div>
+                                <div class="text-xs text-gray-500">Sudo Commands</div>
+                            </div>
+                            <div class="text-center">
+                                <div id="total-file-access" class="text-2xl font-mono text-gray-400">0</div>
+                                <div class="text-xs text-gray-500">File Access</div>
+                            </div>
+                            <div class="text-center">
+                                <div id="total-brute-force" class="text-2xl font-mono text-gray-400">0</div>
+                                <div class="text-xs text-gray-500">Brute Force</div>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- Brute Force Alert -->
-                    <div id="brute-force-alert" class="hidden mt-4 bg-red-900/30 border border-red-700 rounded-lg p-4 flex items-center">
-                        <i data-lucide="alert-octagon" class="w-6 h-6 text-red-400 mr-3"></i>
-                        <div>
-                            <div class="font-semibold text-red-400">Brute Force Detected</div>
-                            <div class="text-sm text-gray-400">Multiple authentication failures detected in short period</div>
+                    <div id="brute-force-alert" class="hidden bg-red-900/30 border border-red-700 rounded-lg p-4">
+                        <div class="flex items-center">
+                            <i data-lucide="alert-octagon" class="w-6 h-6 text-red-400 mr-3"></i>
+                            <div>
+                                <div class="font-semibold text-red-400">Brute Force Detected</div>
+                                <div class="text-sm text-gray-400">Multiple authentication failures detected in recent window</div>
+                            </div>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Sensitive File Access -->
-                <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                    <div class="px-4 py-3 bg-gray-900 border-b border-gray-700">
-                        <h3 class="font-semibold">Sensitive File Access</h3>
+                <!-- Risk Factors - Why is this risky? -->
+                <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold">Why This Score?</h3>
+                        <span id="risk-factors-total" class="text-sm text-gray-400"></span>
                     </div>
-                    <table class="w-full text-sm">
-                        <thead class="bg-gray-900/50">
-                            <tr>
-                                <th class="px-4 py-2 text-left text-gray-400">File</th>
-                                <th class="px-4 py-2 text-left text-gray-400">Process</th>
-                                <th class="px-4 py-2 text-left text-gray-400">Count</th>
-                                <th class="px-4 py-2 text-left text-gray-400">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="file-access-table">
-                            <tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">No file access events</td></tr>
-                        </tbody>
-                    </table>
+                    <div id="risk-factors-list">
+                        <div class="flex items-center justify-center py-8 text-gray-500">
+                            <i data-lucide="shield-check" class="w-8 h-8 mr-3 text-emerald-600"></i>
+                            <span>No risk factors detected — system is clean</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- File Access Table -->
+                <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                    <h3 class="text-lg font-semibold mb-4">Sensitive File Access (Recent)</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-left text-gray-400">
+                                    <th class="px-4 py-2">Path</th>
+                                    <th class="px-4 py-2">Process</th>
+                                    <th class="px-4 py-2">Count</th>
+                                    <th class="px-4 py-2">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="file-access-table">
+                                <tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
                 
                 <!-- Anomalies -->
-                <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                    <div class="px-4 py-3 bg-gray-900 border-b border-gray-700">
-                        <h3 class="font-semibold">Anomalies Detected</h3>
+                <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                    <h3 class="text-lg font-semibold mb-4">Detected Anomalies</h3>
+                    <div id="anomalies-list">
+                        <p class="text-gray-500 text-center py-4">Loading...</p>
                     </div>
-                    <div id="anomalies-list" class="p-4">
-                        <p class="text-gray-500 text-center py-4">No anomalies detected</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Event History -->
+        <div id="content-events" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold">Audit Event History</h3>
+                    <div class="flex items-center space-x-2">
+                        <select id="event-filter" onchange="loadEvents()" class="bg-gray-900 border border-gray-600 rounded px-3 py-1 text-sm">
+                            <option value="">All Events</option>
+                            <option value="auth_failure">Auth Failures</option>
+                            <option value="brute_force">Brute Force</option>
+                            <option value="sudo">Sudo Commands</option>
+                            <option value="file_access">File Access</option>
+                            <option value="selinux_denial">SELinux Denials</option>
+                            <option value="apparmor_denial">AppArmor Denials</option>
+                        </select>
+                        <label class="flex items-center text-sm text-gray-400">
+                            <input type="checkbox" id="show-acknowledged" onchange="loadEvents()" class="mr-2">
+                            Show acknowledged
+                        </label>
+                        <button onclick="acknowledgeAllEvents()" class="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded">
+                            Acknowledge All
+                        </button>
                     </div>
+                </div>
+                
+                <div id="events-list" class="space-y-2">
+                    <p class="text-gray-500 text-center py-8">Loading events...</p>
+                </div>
+                
+                <div id="events-empty" class="hidden text-center py-8 text-gray-500">
+                    <i data-lucide="check-circle" class="w-12 h-12 mx-auto mb-2 text-emerald-600"></i>
+                    <p>No unacknowledged events</p>
                 </div>
             </div>
         </div>
 
         <!-- Tab Content: Network -->
         <div id="content-network" class="tab-content hidden">
-            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-900">
-                        <tr>
-                            <th class="px-4 py-2 text-left text-gray-400">Address</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Port</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Proto</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Process</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="network-table">
-                        <tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
-                    </tbody>
-                </table>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold mb-4">Listening Ports</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-400">
+                                <th class="px-4 py-2">Address</th>
+                                <th class="px-4 py-2">Port</th>
+                                <th class="px-4 py-2">Protocol</th>
+                                <th class="px-4 py-2">Process</th>
+                                <th class="px-4 py-2">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="network-table">
+                            <tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
+        <!-- Tab Content: Processes -->
         <div id="content-processes" class="tab-content hidden">
-            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-900">
-                        <tr>
-                            <th class="px-4 py-2 text-left text-gray-400">PID</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Name</th>
-                            <th class="px-4 py-2 text-left text-gray-400">State</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Memory</th>
-                            <th class="px-4 py-2 text-left text-gray-400">FDs</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Flags</th>
-                        </tr>
-                    </thead>
-                    <tbody id="process-table">
-                        <tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
-                    </tbody>
-                </table>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold mb-4">Notable Processes</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-400">
+                                <th class="px-4 py-2">PID</th>
+                                <th class="px-4 py-2">Name</th>
+                                <th class="px-4 py-2">State</th>
+                                <th class="px-4 py-2">Memory</th>
+                                <th class="px-4 py-2">FDs</th>
+                                <th class="px-4 py-2">Flags</th>
+                            </tr>
+                        </thead>
+                        <tbody id="process-table">
+                            <tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
+        <!-- Tab Content: Configs -->
         <div id="content-configs" class="tab-content hidden">
-            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-900">
-                        <tr>
-                            <th class="px-4 py-2 text-left text-gray-400">Path</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Size</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Modified</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Permissions</th>
-                            <th class="px-4 py-2 text-left text-gray-400">Checksum (SHA256)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="config-table">
-                        <tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
-                    </tbody>
-                </table>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold mb-4">Monitored Config Files</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-400">
+                                <th class="px-4 py-2">Path</th>
+                                <th class="px-4 py-2">Size</th>
+                                <th class="px-4 py-2">Modified</th>
+                                <th class="px-4 py-2">Perms</th>
+                                <th class="px-4 py-2">SHA256</th>
+                            </tr>
+                        </thead>
+                        <tbody id="config-table">
+                            <tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
+        <!-- Tab Content: Raw JSON -->
         <div id="content-raw" class="tab-content hidden">
-            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
-                <pre id="raw-json" class="text-xs text-gray-300 font-mono overflow-auto max-h-96">Loading...</pre>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                <h3 class="text-lg font-semibold mb-4">Raw Fingerprint JSON</h3>
+                <pre id="raw-json" class="bg-gray-900 p-4 rounded-lg text-xs overflow-auto max-h-96 text-gray-300">Loading...</pre>
             </div>
         </div>
     </main>
 
     <!-- Footer -->
-    <footer class="bg-gray-800 border-t border-gray-700 py-3 px-4 mt-8">
+    <footer class="bg-gray-800 border-t border-gray-700 py-2 px-4 mt-8">
         <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-gray-500">
-            <span>C-Sentinel v0.4.0</span>
+            <span>C-Sentinel v0.5.0</span>
             <span id="last-update">Last updated: -</span>
         </div>
     </footer>
@@ -282,7 +428,9 @@
     <script>
         const hostname = '{{ hostname }}';
         let memoryChart, loadChart;
+        let hostData = null;
 
+        // Initialize Lucide icons
         lucide.createIcons();
 
         // Tab switching
@@ -293,10 +441,15 @@
                 el.classList.add('border-transparent', 'text-gray-400');
             });
             
-            document.getElementById('content-' + tabName).classList.remove('hidden');
-            const btn = document.getElementById('tab-' + tabName);
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+            const btn = document.getElementById(`tab-${tabName}`);
             btn.classList.add('border-emerald-500', 'text-emerald-400');
             btn.classList.remove('border-transparent', 'text-gray-400');
+            
+            // Load events when switching to events tab
+            if (tabName === 'events') {
+                loadEvents();
+            }
         }
 
         // Format bytes
@@ -304,153 +457,492 @@
             if (bytes < 1024) return bytes + ' B';
             if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
             if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-            return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
         }
-        
+
+        // Format relative time
+        function timeAgo(dateStr) {
+            const date = new Date(dateStr);
+            const now = new Date();
+            const seconds = Math.floor((now - date) / 1000);
+            
+            if (seconds < 60) return 'just now';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+            return Math.floor(seconds / 86400) + 'd ago';
+        }
+
         // Get risk class
         function getRiskClass(level) {
-            const classes = {
-                'low': 'risk-low',
-                'medium': 'risk-medium',
-                'high': 'risk-high',
-                'critical': 'risk-critical'
+            return level ? `risk-${level}` : 'risk-low';
+        }
+
+        // Generate security posture summary
+        function generatePostureSummary(audit) {
+            const riskScore = audit.risk_score || 0;
+            const riskLevel = audit.risk_level || 'low';
+            const authFailures = audit.authentication?.failures || 0;
+            const bruteForce = audit.authentication?.brute_force_detected || false;
+            const sudoCount = audit.privilege_escalation?.sudo_count || 0;
+            const sudoDeviation = audit.privilege_escalation?.sudo_deviation_pct || 0;
+            const fileAccess = audit.file_integrity?.sensitive_file_access || [];
+            const tmpExecs = audit.process_activity?.tmp_executions || 0;
+            const devshmExecs = audit.process_activity?.devshm_executions || 0;
+            const riskFactors = audit.risk_factors || [];
+            
+            const postureIcon = document.getElementById('posture-icon');
+            const postureBadge = document.getElementById('posture-badge');
+            const postureText = document.getElementById('posture-text');
+            
+            let sentences = [];
+            let posture = 'HEALTHY';
+            let postureColor = 'emerald';
+            let icon = 'shield-check';
+            
+            // Determine overall posture
+            if (riskScore >= 31) {
+                posture = 'CRITICAL';
+                postureColor = 'red';
+                icon = 'shield-alert';
+            } else if (riskScore >= 16) {
+                posture = 'ELEVATED RISK';
+                postureColor = 'orange';
+                icon = 'shield-alert';
+            } else if (riskScore >= 6) {
+                posture = 'CAUTION';
+                postureColor = 'yellow';
+                icon = 'shield';
+            }
+            
+            // Build summary sentences
+            if (riskScore === 0) {
+                sentences.push('This system shows no security concerns.');
+            } else {
+                sentences.push(`This system shows ${posture.toLowerCase()} with a risk score of ${riskScore}.`);
+            }
+            
+            // Authentication
+            if (bruteForce) {
+                sentences.push(`Brute force attack pattern detected with ${authFailures} authentication failures.`);
+            } else if (authFailures > 0) {
+                sentences.push(`${authFailures} authentication failure${authFailures > 1 ? 's' : ''} detected in the recent window.`);
+            } else {
+                sentences.push('Authentication patterns are normal with no failures detected.');
+            }
+            
+            // Privilege escalation
+            if (sudoDeviation > 200) {
+                sentences.push(`Sudo usage is elevated (${sudoCount} commands, ${Math.round(sudoDeviation)}% above baseline).`);
+            } else if (sudoCount > 0) {
+                sentences.push(`Privilege usage is within normal expectations (${sudoCount} sudo commands).`);
+            } else {
+                sentences.push('No privilege escalation activity detected.');
+            }
+            
+            // File access
+            const suspiciousFiles = fileAccess.filter(f => f.suspicious).length;
+            if (suspiciousFiles > 0) {
+                sentences.push(`${suspiciousFiles} suspicious sensitive file access event${suspiciousFiles > 1 ? 's' : ''} detected.`);
+            } else if (fileAccess.length > 0) {
+                sentences.push(`${fileAccess.length} sensitive file${fileAccess.length > 1 ? 's were' : ' was'} accessed normally.`);
+            }
+            
+            // Process activity
+            if (tmpExecs > 0 || devshmExecs > 0) {
+                let execWarnings = [];
+                if (tmpExecs > 0) execWarnings.push(`${tmpExecs} from /tmp`);
+                if (devshmExecs > 0) execWarnings.push(`${devshmExecs} from /dev/shm`);
+                sentences.push(`Warning: Suspicious executions detected (${execWarnings.join(', ')}).`);
+            }
+            
+            // Final summary
+            sentences.push(`Overall posture: <strong class="text-${postureColor}-400">${posture}</strong>.`);
+            
+            // Update UI
+            postureIcon.className = `flex-shrink-0 w-12 h-12 rounded-full bg-${postureColor}-900/50 flex items-center justify-center`;
+            postureIcon.innerHTML = `<i data-lucide="${icon}" class="w-6 h-6 text-${postureColor}-400"></i>`;
+            
+            postureBadge.className = `px-2 py-0.5 rounded text-xs font-bold bg-${postureColor}-900/50 text-${postureColor}-400 border border-${postureColor}-700/50`;
+            postureBadge.textContent = posture;
+            
+            postureText.innerHTML = sentences.join(' ');
+            
+            lucide.createIcons();
+        }
+
+        // Get event type display info
+        function getEventTypeInfo(type) {
+            const types = {
+                'auth_failure': { label: 'Auth Failure', icon: 'user-x', color: 'text-red-400' },
+                'brute_force': { label: 'Brute Force', icon: 'alert-octagon', color: 'text-red-500' },
+                'sudo': { label: 'Sudo Command', icon: 'terminal', color: 'text-blue-400' },
+                'file_access': { label: 'File Access', icon: 'file-warning', color: 'text-yellow-400' },
+                'selinux_denial': { label: 'SELinux Denial', icon: 'shield-x', color: 'text-purple-400' },
+                'apparmor_denial': { label: 'AppArmor Denial', icon: 'shield-x', color: 'text-purple-400' }
             };
-            return classes[level] || 'risk-low';
+            return types[type] || { label: type, icon: 'info', color: 'text-gray-400' };
         }
 
         // Initialize charts
         function initCharts() {
             const chartConfig = {
-                type: 'line',
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { 
-                            display: true,
-                            grid: { color: 'rgba(255,255,255,0.1)' },
-                            ticks: { color: '#9ca3af', maxRotation: 45 }
-                        },
-                        y: { 
-                            display: true,
-                            grid: { color: 'rgba(255,255,255,0.1)' },
-                            ticks: { color: '#9ca3af' },
-                            beginAtZero: true
-                        }
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(75, 85, 99, 0.3)' },
+                        ticks: { color: '#9ca3af' }
+                    },
+                    y: {
+                        grid: { color: 'rgba(75, 85, 99, 0.3)' },
+                        ticks: { color: '#9ca3af' }
                     }
+                },
+                plugins: {
+                    legend: { display: false }
                 }
             };
 
             memoryChart = new Chart(document.getElementById('memory-chart'), {
-                ...chartConfig,
+                type: 'line',
                 data: {
                     labels: [],
                     datasets: [{
                         data: [],
-                        borderColor: '#22c55e',
-                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
                         fill: true,
-                        tension: 0.3,
-                        pointRadius: 3
+                        tension: 0.3
                     }]
-                }
+                },
+                options: { ...chartConfig, scales: { ...chartConfig.scales, y: { ...chartConfig.scales.y, max: 100 } } }
             });
 
             loadChart = new Chart(document.getElementById('load-chart'), {
-                ...chartConfig,
+                type: 'line',
                 data: {
                     labels: [],
                     datasets: [{
                         data: [],
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
                         fill: true,
-                        tension: 0.3,
-                        pointRadius: 3
+                        tension: 0.3
                     }]
+                },
+                options: chartConfig
+            });
+        }
+
+        // Render risk score sparkline
+        function renderRiskSparkline(fingerprints) {
+            const canvas = document.getElementById('risk-sparkline');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Get risk scores (filter out nulls, default to 0)
+            const scores = fingerprints
+                .map(f => f.audit_risk_score ?? 0)
+                .reverse(); // Oldest first for left-to-right
+            
+            if (scores.length < 2) return;
+            
+            // Calculate bounds
+            const maxScore = Math.max(...scores, 5); // Min max of 5 for scale
+            const minScore = 0;
+            const range = maxScore - minScore || 1;
+            
+            // Calculate points
+            const padding = 2;
+            const chartWidth = width - padding * 2;
+            const chartHeight = height - padding * 2;
+            const stepX = chartWidth / (scores.length - 1);
+            
+            // Determine color based on current (latest) score
+            const currentScore = scores[scores.length - 1];
+            let strokeColor, fillColor;
+            if (currentScore >= 31) {
+                strokeColor = '#ef4444'; // red
+                fillColor = 'rgba(239, 68, 68, 0.2)';
+            } else if (currentScore >= 16) {
+                strokeColor = '#f97316'; // orange
+                fillColor = 'rgba(249, 115, 22, 0.2)';
+            } else if (currentScore >= 6) {
+                strokeColor = '#eab308'; // yellow
+                fillColor = 'rgba(234, 179, 8, 0.2)';
+            } else {
+                strokeColor = '#10b981'; // emerald
+                fillColor = 'rgba(16, 185, 129, 0.2)';
+            }
+            
+            // Draw filled area
+            ctx.beginPath();
+            ctx.moveTo(padding, height - padding);
+            
+            scores.forEach((score, i) => {
+                const x = padding + i * stepX;
+                const y = height - padding - ((score - minScore) / range) * chartHeight;
+                ctx.lineTo(x, y);
+            });
+            
+            ctx.lineTo(padding + (scores.length - 1) * stepX, height - padding);
+            ctx.closePath();
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+            
+            // Draw line
+            ctx.beginPath();
+            scores.forEach((score, i) => {
+                const x = padding + i * stepX;
+                const y = height - padding - ((score - minScore) / range) * chartHeight;
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
                 }
             });
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            
+            // Draw current value dot
+            const lastX = padding + (scores.length - 1) * stepX;
+            const lastY = height - padding - ((currentScore - minScore) / range) * chartHeight;
+            ctx.beginPath();
+            ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+            ctx.fillStyle = strokeColor;
+            ctx.fill();
+        }
+
+        // Reset audit totals
+        async function resetAuditTotals() {
+            if (!confirm('Reset all security counters? This marks current events as acknowledged.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/hosts/${hostname}/reset-audit`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    alert('Counters reset successfully');
+                    loadHostData();
+                    loadEvents();
+                } else {
+                    const error = await response.json();
+                    alert('Reset failed: ' + (error.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Reset failed:', error);
+                alert('Reset failed: ' + error.message);
+            }
+        }
+
+        // Load events
+        async function loadEvents() {
+            const filter = document.getElementById('event-filter').value;
+            const showAcknowledged = document.getElementById('show-acknowledged').checked;
+            
+            let url = `/api/hosts/${hostname}/events?limit=100`;
+            if (filter) url += `&type=${filter}`;
+            if (showAcknowledged) url += `&include_acknowledged=true`;
+            
+            try {
+                const response = await fetch(url);
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const events = await response.json();
+                
+                const listEl = document.getElementById('events-list');
+                const emptyEl = document.getElementById('events-empty');
+                
+                if (events.length === 0) {
+                    listEl.classList.add('hidden');
+                    emptyEl.classList.remove('hidden');
+                } else {
+                    listEl.classList.remove('hidden');
+                    emptyEl.classList.add('hidden');
+                    
+                    listEl.innerHTML = events.map(e => {
+                        const info = getEventTypeInfo(e.event_type);
+                        const details = e.details || {};
+                        
+                        let detailsHtml = '';
+                        if (e.event_type === 'file_access' && details.path) {
+                            detailsHtml = `<span class="text-gray-400">${details.path}</span>`;
+                            if (details.process) detailsHtml += ` <span class="text-gray-500">by ${details.process}</span>`;
+                        } else if (e.event_type === 'auth_failure' && details.users?.length) {
+                            detailsHtml = `<span class="text-gray-400">${details.users.join(', ')}</span>`;
+                        }
+                        
+                        return `
+                            <div class="bg-gray-900 rounded-lg p-3 border-l-4 event-type-${e.event_type} ${e.acknowledged ? 'opacity-50' : ''}">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <i data-lucide="${info.icon}" class="w-5 h-5 mr-3 ${info.color}"></i>
+                                        <div>
+                                            <div class="flex items-center">
+                                                <span class="font-semibold ${info.color}">${info.label}</span>
+                                                <span class="ml-2 text-sm text-gray-400">×${e.count}</span>
+                                                ${e.acknowledged ? '<span class="ml-2 text-xs text-gray-500">(acknowledged)</span>' : ''}
+                                            </div>
+                                            <div class="text-xs">${detailsHtml}</div>
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-xs text-gray-500">${timeAgo(e.captured_at)}</div>
+                                        <div class="text-xs text-gray-600">${new Date(e.captured_at).toLocaleString()}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    lucide.createIcons();
+                }
+            } catch (error) {
+                console.error('Failed to load events:', error);
+            }
+        }
+
+        // Acknowledge all events
+        async function acknowledgeAllEvents() {
+            if (!confirm('Acknowledge all events?')) return;
+            
+            try {
+                const response = await fetch(`/api/hosts/${hostname}/events/acknowledge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                
+                if (response.ok) {
+                    loadEvents();
+                }
+            } catch (error) {
+                console.error('Failed to acknowledge events:', error);
+            }
         }
 
         // Load host data
         async function loadHostData() {
             try {
                 const response = await fetch(`/api/hosts/${hostname}`);
-                const data = await response.json();
-                
-                if (data.error) {
-                    document.getElementById('host-status').textContent = 'Host not found';
+                if (response.status === 401) {
+                    window.location.href = '/login';
                     return;
                 }
-
-                // Update status
-                const lastSeen = new Date(data.last_seen);
-                const ageMinutes = (new Date() - lastSeen) / 60000;
-                let status = 'ok';
-                if (ageMinutes > 10) status = 'stale';
+                const data = await response.json();
+                hostData = data;
                 
-                document.getElementById('host-status').textContent = 
-                    `Last seen: ${lastSeen.toLocaleString()} (${status})`;
-
+                // Update cumulative totals
+                const authTotal = data.audit_auth_failures_total || 0;
+                const sudoTotal = data.audit_sudo_count_total || 0;
+                const fileTotal = data.audit_sensitive_access_total || 0;
+                const bruteTotal = data.audit_brute_force_count || 0;
+                
+                document.getElementById('total-auth-failures').textContent = authTotal;
+                document.getElementById('total-sudo-count').textContent = sudoTotal;
+                document.getElementById('total-file-access').textContent = fileTotal;
+                document.getElementById('total-brute-force').textContent = bruteTotal;
+                
+                // Colour coding - only red when > 0
+                const authEl = document.getElementById('total-auth-failures');
+                authEl.className = 'text-2xl font-mono ' + 
+                    (authTotal > 20 ? 'text-red-400' : authTotal > 0 ? 'text-yellow-400' : 'text-gray-400');
+                
+                const bruteEl = document.getElementById('total-brute-force');
+                bruteEl.className = 'text-2xl font-mono ' + (bruteTotal > 0 ? 'text-red-400' : 'text-gray-400');
+                
+                const fileEl = document.getElementById('total-file-access');
+                fileEl.className = 'text-2xl font-mono ' + (fileTotal > 0 ? 'text-yellow-400' : 'text-gray-400');
+                
+                if (data.audit_totals_since) {
+                    document.getElementById('totals-since').textContent = 
+                        'Since: ' + new Date(data.audit_totals_since).toLocaleString();
+                }
+                
+                document.getElementById('cumulative-totals').classList.remove('hidden');
+                
                 // Update charts
-                const fingerprints = data.fingerprints.slice(0, 50).reverse();
-                const labels = fingerprints.map(f => 
-                    new Date(f.captured_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-                );
+                const fingerprints = data.fingerprints || [];
+                const recent = fingerprints.slice(0, 50).reverse();
+                
+                const labels = recent.map(f => {
+                    const d = new Date(f.captured_at);
+                    return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+                });
                 
                 memoryChart.data.labels = labels;
-                memoryChart.data.datasets[0].data = fingerprints.map(f => f.memory_percent || 0);
+                memoryChart.data.datasets[0].data = recent.map(f => f.memory_percent || 0);
                 memoryChart.update();
-
+                
                 loadChart.data.labels = labels;
-                loadChart.data.datasets[0].data = fingerprints.map(f => f.load_1m || 0);
+                loadChart.data.datasets[0].data = recent.map(f => f.load_1m || 0);
                 loadChart.update();
-
-                // Update stats from latest
-                if (fingerprints.length > 0) {
-                    const latest = fingerprints[fingerprints.length - 1];
+                
+                // Risk score sparkline
+                renderRiskSparkline(recent);
+                
+                // Update header status
+                const latest = fingerprints[0];
+                if (latest) {
+                    let status = 'ok';
+                    if (latest.exit_code === 2) status = 'critical';
+                    else if (latest.exit_code === 1) status = 'warning';
+                    
+                    document.getElementById('host-status').textContent = 
+                        `Last seen: ${timeAgo(latest.captured_at)} • Status: ${status.toUpperCase()}`;
+                    document.getElementById('host-status').className = `text-xs status-${status}`;
+                    
+                    // Quick stats
                     document.getElementById('stat-memory').textContent = 
                         latest.memory_percent ? latest.memory_percent.toFixed(1) + '%' : '-';
                     document.getElementById('stat-load').textContent = 
                         latest.load_1m ? latest.load_1m.toFixed(2) : '-';
-                    document.getElementById('stat-processes').textContent = 
-                        latest.process_count || '-';
-                    document.getElementById('stat-zombies').textContent = 
-                        latest.zombie_count || '0';
-                    document.getElementById('stat-listeners').textContent = 
-                        latest.listener_count || '-';
+                    document.getElementById('stat-processes').textContent = latest.process_count || '-';
+                    document.getElementById('stat-zombies').textContent = latest.zombie_count || '0';
+                    document.getElementById('stat-listeners').textContent = latest.listener_count || '-';
                     document.getElementById('stat-uptime').textContent = 
                         latest.uptime_days ? latest.uptime_days.toFixed(1) + 'd' : '-';
                     
-                    // Audit stats
-                    if (latest.audit_enabled) {
+                    // Risk score
+                    if (latest.audit_enabled && latest.audit_risk_score !== null) {
                         document.getElementById('stat-risk-card').classList.remove('hidden');
-                        const riskEl = document.getElementById('stat-risk');
-                        riskEl.textContent = latest.audit_risk_score || '0';
-                        riskEl.className = `text-2xl font-mono ${getRiskClass(latest.audit_risk_level)}`;
+                        document.getElementById('stat-risk').textContent = latest.audit_risk_score;
                         
-                        // Show risk badge in header
-                        const badge = document.getElementById('risk-badge');
-                        badge.classList.remove('hidden');
-                        badge.querySelector('span').className = `px-3 py-1 rounded-full text-sm font-semibold ${getRiskClass(latest.audit_risk_level)}`;
-                        document.getElementById('risk-level').textContent = (latest.audit_risk_level || 'unknown').toUpperCase();
+                        const riskBadge = document.getElementById('risk-badge');
+                        riskBadge.classList.remove('hidden');
+                        riskBadge.querySelector('span').className = 
+                            `px-3 py-1 rounded-full text-sm font-semibold ${getRiskClass(latest.audit_risk_level)}`;
+                        document.getElementById('risk-level').textContent = 
+                            (latest.audit_risk_level || 'low').toUpperCase();
                     }
                 }
-
+                
             } catch (error) {
                 console.error('Failed to load host data:', error);
             }
         }
 
-        // Load latest fingerprint details
+        // Load latest fingerprint
         async function loadLatestFingerprint() {
             try {
                 const response = await fetch(`/api/hosts/${hostname}/latest`);
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 const result = await response.json();
-                
-                if (result.error) return;
-                
                 const data = result.data;
                 
                 // Security tab
@@ -465,6 +957,9 @@
                     const scoreBadge = document.getElementById('risk-score-badge');
                     scoreBadge.className = `px-4 py-2 rounded-lg text-lg font-bold ${getRiskClass(audit.risk_level)}`;
                     
+                    // Generate Security Posture Summary
+                    generatePostureSummary(audit);
+                    
                     // Stats
                     document.getElementById('sec-auth-failures').textContent = 
                         audit.authentication?.failures || 0;
@@ -474,6 +969,31 @@
                         audit.file_integrity?.sensitive_file_access?.length || 0;
                     document.getElementById('sec-selinux').textContent = 
                         audit.security_framework?.selinux_avc_denials || 0;
+                    
+                    // Learning/confidence badge
+                    const learning = audit.learning;
+                    const learningBadge = document.getElementById('learning-badge');
+                    const sampleCount = learning?.sample_count || 0;
+                    
+                    if (learning && sampleCount <= 50) {
+                        document.getElementById('sample-count').textContent = sampleCount;
+                        learningBadge.classList.remove('hidden');
+                        
+                        // Label and color based on sample count
+                        const labelEl = document.getElementById('learning-label');
+                        if (sampleCount < 10) {
+                            // Learning phase - Blue
+                            labelEl.textContent = 'Learning';
+                            learningBadge.className = 'px-2 py-1 rounded text-xs font-medium bg-blue-900/50 text-blue-300 border border-blue-700/50';
+                        } else if (sampleCount <= 50) {
+                            // Calibrating phase - Yellow/Amber
+                            labelEl.textContent = 'Calibrating';
+                            learningBadge.className = 'px-2 py-1 rounded text-xs font-medium bg-amber-900/50 text-amber-300 border border-amber-700/50';
+                        }
+                    } else {
+                        // > 50 samples - hide badge, fully calibrated
+                        learningBadge.classList.add('hidden');
+                    }
                     
                     // Brute force alert
                     if (audit.authentication?.brute_force_detected) {
@@ -517,6 +1037,44 @@
                         `).join('') :
                         '<p class="text-gray-500 text-center py-4">No anomalies detected</p>';
                     
+                    // Risk Factors - "Why is this risky?"
+                    const riskFactors = audit.risk_factors || [];
+                    const totalWeight = riskFactors.reduce((sum, f) => sum + f.weight, 0);
+                    
+                    document.getElementById('risk-factors-total').textContent = 
+                        riskFactors.length ? `${riskFactors.length} factor${riskFactors.length > 1 ? 's' : ''} = ${totalWeight} points` : '';
+                    
+                    document.getElementById('risk-factors-list').innerHTML = riskFactors.length ?
+                        riskFactors.map(f => {
+                            // Determine color based on weight
+                            let weightClass = 'text-yellow-400';
+                            let bgClass = 'bg-yellow-900/20 border-yellow-700/50';
+                            if (f.weight >= 10) {
+                                weightClass = 'text-red-400';
+                                bgClass = 'bg-red-900/20 border-red-700/50';
+                            } else if (f.weight >= 5) {
+                                weightClass = 'text-orange-400';
+                                bgClass = 'bg-orange-900/20 border-orange-700/50';
+                            } else if (f.weight <= 2) {
+                                weightClass = 'text-gray-400';
+                                bgClass = 'bg-gray-900 border-gray-700';
+                            }
+                            
+                            return `
+                                <div class="flex items-center justify-between p-3 ${bgClass} border rounded-lg mb-2">
+                                    <div class="flex items-center">
+                                        <i data-lucide="alert-triangle" class="w-4 h-4 mr-3 ${weightClass}"></i>
+                                        <span>${f.reason}</span>
+                                    </div>
+                                    <span class="font-mono font-bold ${weightClass}">+${f.weight}</span>
+                                </div>
+                            `;
+                        }).join('') :
+                        `<div class="flex items-center justify-center py-8 text-gray-500">
+                            <i data-lucide="shield-check" class="w-8 h-8 mr-3 text-emerald-600"></i>
+                            <span>No risk factors detected — system is clean</span>
+                        </div>`;
+                    
                     lucide.createIcons();
                 } else {
                     document.getElementById('security-disabled').classList.remove('hidden');
@@ -540,19 +1098,17 @@
                     '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">No listeners</td></tr>';
 
                 // Process table
-                const processes = data.notable_processes || [];
+                const processes = data.process_summary?.notable_processes || [];
                 document.getElementById('process-table').innerHTML = processes.length ?
                     processes.map(p => `
                         <tr class="border-t border-gray-700">
                             <td class="px-4 py-2 font-mono">${p.pid}</td>
                             <td class="px-4 py-2">${p.name}</td>
                             <td class="px-4 py-2">${p.state}</td>
-                            <td class="px-4 py-2 font-mono">${formatBytes(p.rss_bytes || 0)}</td>
-                            <td class="px-4 py-2 font-mono">${p.fd_count || '-'}</td>
+                            <td class="px-4 py-2 font-mono">${formatBytes(p.memory_mb * 1024 * 1024 || 0)}</td>
+                            <td class="px-4 py-2 font-mono">${p.open_fds || '-'}</td>
                             <td class="px-4 py-2 text-xs">
-                                ${p.zombie ? '<span class="text-red-400 mr-1">zombie</span>' : ''}
-                                ${p.high_fd_count ? '<span class="text-yellow-400 mr-1">high-fd</span>' : ''}
-                                ${p.high_memory ? '<span class="text-yellow-400 mr-1">high-mem</span>' : ''}
+                                ${p.flag ? `<span class="text-yellow-400">${p.flag}</span>` : ''}
                             </td>
                         </tr>
                     `).join('') :
@@ -597,4 +1153,3 @@
     </script>
 </body>
 </html>
-

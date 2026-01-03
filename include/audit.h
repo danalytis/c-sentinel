@@ -1,4 +1,12 @@
 /*
+ * C-Sentinel - Semantic Observability for UNIX Systems
+ * Copyright (c) 2025 William Murray
+ *
+ * Licensed under the MIT License.
+ * See LICENSE file for details.
+ *
+ * https://github.com/williamofai/c-sentinel
+ *
  * audit.h - Auditd integration for C-Sentinel
  * 
  * Captures and summarises security-relevant audit events
@@ -22,8 +30,10 @@
 #define MAX_AUDIT_ANOMALIES     16
 #define MAX_PROCESS_CHAIN       8
 #define MAX_SUSPICIOUS_PROCS    16
+#define MAX_RISK_FACTORS        16
 #define HASH_USERNAME_LEN       12      /* "user_xxxx" + null */
 #define AUDIT_PATH_LEN          256     /* Shorter paths for audit */
+#define RISK_FACTOR_REASON_LEN  128
 
 /* Hashed username for privacy */
 typedef struct {
@@ -67,6 +77,12 @@ typedef struct {
     float deviation_pct;
     time_t timestamp;
 } audit_anomaly_t;
+
+/* Risk factor - explains why the score is what it is */
+typedef struct {
+    char reason[RISK_FACTOR_REASON_LEN];
+    int  weight;                         /* Points added to score */
+} risk_factor_t;
 
 /* Main audit summary structure */
 typedef struct {
@@ -119,6 +135,13 @@ typedef struct {
     /* Risk assessment */
     int  risk_score;
     char risk_level[12];                /* "low", "medium", "high", "critical" */
+    
+    /* Risk factors - explains the score */
+    risk_factor_t risk_factors[MAX_RISK_FACTORS];
+    int  risk_factor_count;
+    
+    /* Baseline learning status */
+    int  baseline_sample_count;         /* How many samples in baseline */
 } audit_summary_t;
 
 /* Rolling baseline for audit metrics (stored to disk) */

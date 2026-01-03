@@ -35,24 +35,19 @@ The problem naturally splits into three distinct domains:
 Forcing all of this into C would mean pulling in `libcurl`, a JSON parsing library, and a web framework—adding complexity and dependencies for the API layer, the opposite of what we want for the lightweight prober.
 
 ```
-┌─────────────────────────────────────────┐
-│           Web Dashboard                 │
-│  Flask + PostgreSQL + Chart.js          │
-│  (Multi-host, charts, history)          │
-└─────────────────────────────────────────┘
-                    ▲
-                    │ JSON via HTTP POST
-                    │
-┌─────────────────────────────────────────┐
-│         Python Wrapper                  │
-│  (LLM integration, policy engine)       │
-└─────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────┐
-│         C Prober (76KB)                 │
-│  /proc parsing, SHA256, network scan    │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      Web Dashboard                              │
+│  Flask + PostgreSQL + Chart.js                                  │
+│  (Multi-host, charts, history, security posture, alerts)        │
+└─────────────────────────────────────────────────────────────────┘
+                              ▲
+                              │ JSON via HTTP POST
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                     C Prober (99KB)                             │
+│  /proc parsing, SHA256, network scan, auditd integration        │
+│  baseline learning, risk scoring, process chains                │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## SHA256 Checksums (v0.3.0)
@@ -73,6 +68,235 @@ Forcing all of this into C would mean pulling in `libcurl`, a JSON parsing libra
 **Previous approach**: djb2 hash (16 chars) - fast but not cryptographically secure. Replaced with full SHA256 (64 chars) for proper integrity verification.
 
 **Trade-off**: SHA256 is slower than djb2. Acceptable—we're checksumming a handful of config files, not gigabytes of data.
+
+## Auditd Integration (v0.4.0)
+
+**Decision**: Summarise auditd logs rather than forwarding them raw.
+
+**Rationale**:
+Security tools like auditd and AIDE answer "what happened?" with precision. C-Sentinel asks "what's weird?" The combination is powerful:
+
+| Without auditd | With auditd |
+|----------------|-------------|
+| "3 unusual ports" | "3 unusual ports + 3 failed logins + /etc/shadow accessed by python script spawned from web server" |
+
+The key insight: **context is everything**. An LLM seeing "file accessed" is one thing; seeing "file accessed by python3 spawned from apache2" is a security incident.
+
+**Design principles**:
+1. **Summarise, don't dump** - Aggregate counts, not raw logs
+2. **Process ancestry** - Track the process chain (apache2 → bash → python3)
+3. **Baseline deviation** - "3 failures" vs "3 failures (400% above normal)"
+4. **Privacy-preserving** - Hash usernames, redact IPs in dashboard
+
+**What we capture**:
+- Authentication failures (count + hashed usernames + deviation from baseline)
+- Sudo/privilege escalation events
+- Sensitive file access with process chain
+- Executions from /tmp or /dev/shm (malware indicators)
+- SELinux/AppArmor denials
+
+**What we don't capture**:
+- Successful logins (noise)
+- Raw usernames (privacy)
+- Command arguments (could contain secrets)
+- File contents (never)
+
+## Locale-Aware Time Windows (v0.5.2)
+
+**Decision**: Use `strftime("%x")` for ausearch timestamps instead of hardcoded date format.
+
+**The Bug**:
+Initial implementation used `MM/DD/YYYY` format for ausearch `-ts` parameter. This worked in US locale but failed in UK/EU locales where the system expects `DD/MM/YYYY`.
+
+**The Symptom**:
+- Cumulative counts grew unboundedly (773 sudo commands when there should have been ~20)
+- ausearch was re-counting all events since midnight instead of since last probe
+
+**The Fix**:
+```c
+/* Use strftime with %x for locale-aware date format */
+char datebuf[32];
+strftime(datebuf, sizeof(datebuf), "%x", tm);
+
+snprintf(buf, bufsize, "%s %02d:%02d:%02d",
+         datebuf, tm->tm_hour, tm->tm_min, tm->tm_sec);
+```
+
+**Lesson**: Never assume date format. Always use locale-aware formatting or explicit timestamps.
+
+## Explainable Risk Scoring (v0.5.1)
+
+**Decision**: Every risk score must come with human-readable explanations of why.
+
+**The Problem**:
+A "Risk Score: 25" means nothing without context. Is it auth failures? Suspicious file access? Process anomalies? Users (and LLMs) need to know *why*.
+
+**Implementation**:
+```c
+typedef struct {
+    char reason[RISK_FACTOR_REASON_LEN];
+    int weight;  /* Points added to score */
+} risk_factor_t;
+```
+
+Each factor that contributes to the score is tracked:
+```json
+"risk_factors": [
+  {"reason": "10 auth failures (200% above baseline - high)", "weight": 30},
+  {"reason": "Brute force attack pattern detected", "weight": 10},
+  {"reason": "2 sensitive file(s) accessed", "weight": 4}
+]
+```
+
+**Design Principle**: "Prefer features that change conclusions, not features that add more data." (GPT-4 analysis feedback)
+
+## Learning/Calibration Indicator (v0.5.3)
+
+**Decision**: Show users how "confident" the baseline comparison is.
+
+**The Problem**:
+A system with only 3 baseline samples cannot reliably detect "above normal" deviations. Users need to know when the system is still learning.
+
+**Implementation**:
+| Samples | Status | Confidence |
+|---------|--------|------------|
+| < 10 | Learning | Low |
+| 10-50 | Calibrating | Medium |
+| > 50 | *(hidden)* | High |
+
+**UX Choice**: The badge disappears at 50+ samples rather than showing "Ready" forever. Absence of the badge *is* the signal of full confidence.
+
+**Auto-Update Decision**: Each probe automatically updates the baseline rather than requiring explicit `--learn` runs. This ensures the baseline evolves with normal system changes.
+
+## Security Posture Summary (v0.5.5)
+
+**Decision**: Generate a plain English summary of security status—no LLM required.
+
+**The Problem**:
+Security dashboards show numbers. Numbers require interpretation. A busy engineer glancing at a dashboard should immediately understand "is this system okay?"
+
+**Implementation**:
+Rule-based prose generation:
+```javascript
+if (riskScore === 0) {
+    sentences.push('This system shows no security concerns.');
+} else {
+    sentences.push(`This system shows ${posture.toLowerCase()} with a risk score of ${riskScore}.`);
+}
+```
+
+**Example Output**:
+> "This system shows no security concerns. Authentication patterns are normal with no failures detected. No privilege escalation activity detected. Overall posture: **HEALTHY**."
+
+**Why Not Use an LLM?**
+1. **Latency**: Rule-based is instant; LLM adds seconds
+2. **Cost**: Every dashboard load would cost tokens
+3. **Determinism**: Same data should always produce same summary
+4. **Offline**: Works without API connectivity
+
+## Risk Trend Sparkline (v0.5.6)
+
+**Decision**: Show 24-hour risk score history as a mini chart.
+
+**The Problem**:
+A single point-in-time score doesn't answer "Is this getting worse or better?"
+
+**Implementation**:
+- 100x30px canvas
+- Pure JavaScript (no additional library)
+- Color-coded by current risk level
+- Uses existing fingerprint data (no new API)
+
+**Visual Design Choices**:
+- Filled area under line (easier to see trends)
+- Dot on current value (shows latest data point)
+- "24h" label (sets context)
+- Color matches risk level (green/yellow/orange/red)
+
+**Data Source**: 
+```sql
+SELECT audit_risk_score FROM fingerprints 
+WHERE host_id = ? 
+ORDER BY captured_at DESC 
+LIMIT 50
+```
+
+No new endpoint needed—data already returned by existing host API.
+
+## Email Alerting (v0.5.4)
+
+**Decision**: Send email alerts on high-risk events with per-host cooldown.
+
+**Alert Triggers**:
+- Risk score ≥ 16 (high or critical)
+- Brute force attack detected
+- Any execution from /tmp
+- Any execution from /dev/shm
+
+**Cooldown Design**:
+```python
+_last_alert = {}  # hostname -> datetime
+
+def send_alert_email(hostname, subject, body):
+    now = datetime.now()
+    last = _last_alert.get(hostname)
+    if last and (now - last).total_seconds() < cooldown_minutes * 60:
+        return False  # Cooldown active
+```
+
+**Why 60-minute cooldown?**
+- Prevents alert fatigue during ongoing attacks
+- Gives ops time to respond before getting another ping
+- Configurable via environment variable
+
+**Email Content**:
+- Clear subject with emoji and severity
+- Host and timestamp
+- List of triggered alerts
+- Risk factors with weights
+- Direct link to dashboard
+
+## Dashboard Authentication (v0.5.0)
+
+**Decision**: Simple password authentication, not OAuth/SAML.
+
+**Rationale**:
+- Internal tool, not SaaS
+- One password simpler than identity provider integration
+- Reduces external dependencies
+- Easy to deploy
+
+**Implementation**:
+- SHA256 hash of password stored in environment
+- Flask session-based authentication
+- API endpoints remain key-authenticated for probes
+
+**Future Consideration**: Multi-user support with roles (admin, viewer) would require database-backed users.
+
+## Event History with Acknowledgement (v0.5.0)
+
+**Decision**: Store discrete security events, not just aggregate counts.
+
+**The Problem**:
+Cumulative counts tell you "100 sudo commands happened." They don't tell you *when*, and they don't let you mark events as "investigated."
+
+**Implementation**:
+```sql
+CREATE TABLE audit_events (
+    id SERIAL PRIMARY KEY,
+    host_id INTEGER REFERENCES hosts(id),
+    event_type VARCHAR(50),  -- 'auth_failure', 'sudo', etc.
+    count INTEGER,
+    details JSONB,
+    acknowledged BOOLEAN DEFAULT FALSE
+);
+```
+
+**Acknowledgement Design**:
+- Events can be individually or bulk acknowledged
+- Acknowledged events hidden by default but retrievable
+- "Reset" clears cumulative totals and acknowledges all events
+- Audit trail preserved (events not deleted)
 
 ## Systemd Service Design (v0.3.0)
 
@@ -102,7 +326,7 @@ ReadWritePaths=/var/lib/sentinel  # Only place it can write
 SuccessExitStatus=0 1 2
 ```
 
-This tells systemd that exit codes 0 (OK), 1 (WARNING), and 2 (CRITICAL) are all valid results—only exit code 3 (ERROR) triggers a restart. Without this, systemd would restart the service every time it found unusual ports!
+This tells systemd that exit codes 0 (OK), 1 (WARNING), and 2 (CRITICAL) are all valid results—only exit code 3 (ERROR) triggers a restart.
 
 ## Web Dashboard Design (v0.3.0)
 
@@ -119,10 +343,10 @@ The CLI prober is excellent for single-host diagnostics, but teams need:
 - Lightweight, no magic
 - Easy to deploy (gunicorn + nginx)
 - Sufficient for internal tooling
-- William's familiarity with Python ecosystem
+- Familiarity with Python ecosystem
 
 **Why PostgreSQL?**
-- Already running on target system (Umami)
+- Already running on target system
 - JSONB type for flexible fingerprint storage
 - Excellent for time-series queries
 - Reliable, battle-tested
@@ -137,52 +361,10 @@ The CLI prober is excellent for single-host diagnostics, but teams need:
 ```sql
 hosts (id, hostname, first_seen, last_seen)
 fingerprints (id, host_id, captured_at, data JSONB, exit_code, ...)
+audit_events (id, host_id, event_type, count, details, acknowledged)
 ```
 
-JSONB allows storing the full fingerprint while extracting key fields (memory_percent, load_1m, etc.) into columns for efficient querying.
-
-**Dashboard-prober communication**:
-Agents POST JSON to `/api/ingest` with an API key. Simple, stateless, works through firewalls.
-
-```bash
-sentinel --json --network | curl -X POST \
-  -H "X-API-Key: secret" \
-  -d @- https://dashboard/api/ingest
-```
-
-## Auditd Integration Design (Planned)
-
-**Decision**: Summarise auditd logs rather than forwarding them raw.
-
-**Rationale**:
-Security tools like auditd and AIDE answer "what happened?" with precision. C-Sentinel asks "what's weird?" The combination is powerful:
-
-| Without auditd | With auditd |
-|----------------|-------------|
-| "3 unusual ports" | "3 unusual ports + 3 failed logins + /etc/shadow accessed by python script spawned from web server" |
-
-The key insight: **context is everything**. An LLM seeing "file accessed" is one thing; seeing "file accessed by python3 spawned from apache2" is a security incident.
-
-**Design principles**:
-1. **Summarise, don't dump** - Aggregate counts, not raw logs
-2. **Process ancestry** - Track the process chain (apache2 → bash → python3)
-3. **Baseline deviation** - "3 failures" vs "3 failures (400% above normal)"
-4. **Privacy-preserving** - Hash usernames, redact IPs in dashboard
-
-**What we'll capture**:
-- Authentication failures (count + hashed usernames + deviation from baseline)
-- Sudo/privilege escalation events
-- Sensitive file access with process chain
-- Executions from /tmp or /dev/shm (malware indicators)
-- SELinux/AppArmor denials
-
-**What we won't capture**:
-- Successful logins (noise)
-- Raw usernames (privacy)
-- Command arguments (could contain secrets)
-- File contents (never)
-
-See [docs/AUDIT_SPEC.md](docs/AUDIT_SPEC.md) for full specification.
+JSONB allows storing the full fingerprint while extracting key fields for efficient querying.
 
 ## Fingerprint Design
 
@@ -193,155 +375,14 @@ Traditional monitoring tools (Prometheus, Datadog, Dynatrace) excel at time-seri
 
 A fingerprint is:
 - A point-in-time snapshot
-- Comprehensive (system info, processes, configs, network)
+- Comprehensive (system info, processes, configs, network, security)
 - Structured for semantic analysis
 - Suitable for diff-comparison between systems
 
 This enables use cases that streaming metrics cannot address:
 - "Compare these two 'identical' non-prod environments"
 - "What's changed since last week?"
-- "Given this snapshot, what do you predict will fail?"
-
-## Network Probing Design (v0.3.0)
-
-**Decision**: Parse `/proc/net/tcp`, `/proc/net/tcp6`, `/proc/net/udp`, `/proc/net/udp6` directly rather than using `netstat` or `ss`.
-
-**Rationale**:
-1. **No external dependencies**: `netstat` may not be installed; `ss` output format varies
-2. **Deterministic parsing**: /proc files have stable, documented formats
-3. **Process correlation**: We can map sockets to PIDs by scanning `/proc/[pid]/fd/`
-
-**What we capture**:
-- Listening ports (TCP/UDP, IPv4/IPv6)
-- Established connections
-- Owning process for each socket
-- "Unusual" port detection (not in common services list)
-
-**Common ports list**:
-```c
-22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995,
-3306, 5432, 6379, 8080, 8443, 27017
-```
-
-Ports above 32768 are considered ephemeral (normal for outbound).
-
-**Trade-off**: Process lookup for each socket is O(n×m) where n=sockets, m=processes. On systems with many connections, this could be slow. Acceptable for diagnostic use; would optimise for continuous monitoring.
-
-## Baseline Learning (v0.3.0)
-
-**Decision**: Store a binary "baseline" of normal system state for deviation detection.
-
-**Rationale**:
-Traditional monitoring compares metrics against static thresholds. But "normal" varies by system:
-- A database server with 50 connections is normal; on a static web server, it's suspicious
-- 80% memory usage might be fine for a Java app, alarming for a C daemon
-
-Baseline learning solves this by recording what's normal *for this specific system*.
-
-**What we track**:
-| Metric | How |
-|--------|-----|
-| Process count | Min/max/avg range |
-| Memory usage | Average and maximum |
-| Load average | Maximum observed |
-| Expected ports | List of ports that should be listening |
-| Config checksums | SHA256 for drift detection |
-
-**Learning vs. Comparing**:
-- `--learn`: Capture current state, merge with existing baseline
-- `--baseline`: Compare current state against learned baseline, report deviations
-
-**Storage format**: Binary struct written to `~/.sentinel/baseline.dat` (user) or `/var/lib/sentinel/baseline.dat` (service)
-- Magic number for validation ("SNTLBASE")
-- Version field for future compatibility
-- Creation and update timestamps
-
-**Trade-off**: Binary format is not human-readable. Chose this for simplicity; could add `--baseline-export` for JSON output later.
-
-## Configuration File (v0.3.0)
-
-**Decision**: Support `~/.sentinel/config` with INI-style key=value format.
-
-**Rationale**:
-Users need to configure:
-- API keys (Anthropic, OpenAI, Ollama)
-- Thresholds (what counts as "high" memory, FDs, etc.)
-- Webhook URLs for alerting
-- Default behaviour (always probe network? default interval?)
-
-**Why not YAML/JSON/TOML?**
-- INI is simple to parse without external libraries
-- Good enough for flat key-value configuration
-- Human-readable and editable
-
-**Path priority** (service vs user):
-1. `/etc/sentinel/config` (system service)
-2. `~/.sentinel/config` (user mode)
-3. Environment variables (highest priority)
-
-**Security**:
-- Config file created with mode 0600 (owner read/write only)
-- API keys displayed as `[set]` not actual values
-
-## Webhook Alerting (v0.3.0)
-
-**Decision**: Support Slack-compatible webhook format for alerts.
-
-**Rationale**:
-When running in watch mode, critical findings should notify humans immediately. Slack webhooks are:
-- De facto standard (Discord, Teams, etc. accept same format)
-- Simple HTTP POST with JSON payload
-- No authentication complexity
-
-**Implementation**: Shell out to `curl` rather than implementing HTTP in C.
-
-**Trade-off**: Requires `curl` to be installed. Acceptable—it's near-universal on Linux systems.
-
-**Alert levels**:
-- Critical: Zombies, permission issues, many unusual ports
-- Warning: Some unusual ports, high FD counts
-- Info: Available but not implemented yet
-
-## Exit Codes for CI/CD (v0.3.0)
-
-**Decision**: Return meaningful exit codes for automation.
-
-| Code | Meaning |
-|------|---------|
-| 0 | No issues detected |
-| 1 | Warnings (minor issues) |
-| 2 | Critical findings |
-| 3 | Error (probe failed) |
-
-**Rationale**:
-Enables use in CI/CD pipelines:
-```bash
-./bin/sentinel --quick --network
-if [ $? -eq 2 ]; then
-    echo "Critical issues found!"
-    exit 1
-fi
-```
-
-## Watch Mode Design (v0.3.0)
-
-**Decision**: Built-in continuous monitoring rather than relying on cron.
-
-**Rationale**:
-- Simpler for users: one command instead of configuring cron
-- Clean shutdown handling (SIGINT/SIGTERM)
-- Can accumulate worst exit code across runs
-- Foundation for future features (webhooks on state change)
-
-**Implementation**:
-```c
-while (keep_running) {
-    run_analysis();
-    sleep(interval);
-}
-```
-
-**Trade-off**: Long-running process vs. cron job. For production, the systemd service with restart-on-failure is more robust.
+- "Why is prod-1 behaving differently from prod-2?"
 
 ## "Notable" Process Selection
 
@@ -361,8 +402,6 @@ A system might have 500+ processes. Sending all of them to an LLM is:
 | `very_long_running` | Running >30 days | Should probably be restarted |
 | `high_memory` | RSS >1GB | Resource hog |
 
-**Trade-off**: We might miss genuinely interesting processes that don't trigger these heuristics. Future versions could allow custom filters.
-
 ## JSON Serialization Strategy
 
 **Decision**: Hand-rolled JSON serialization rather than using cJSON or similar.
@@ -376,7 +415,6 @@ A system might have 500+ processes. Sending all of them to an LLM is:
 **Trade-offs**:
 - More code to maintain
 - Potential for subtle escaping bugs
-- Would reconsider for more complex schemas
 
 **Mitigation**: The `buf_append_json_string()` function handles all escaping centrally.
 
@@ -392,15 +430,14 @@ All paths and strings from external sources are length-limited. Buffer overflows
 The prober reads from `/proc` and specified config files. It requires:
 - Read access to `/proc` (standard for all users)
 - Read access to config files (may require appropriate group membership)
+- Read access to audit logs (requires root or audit group)
 - **No write access anywhere** (except baseline/config in its own directory)
-- **No root required** for basic operation
-
-Some probes (like reading all process FDs) may return partial results for non-root users. This is acceptable—we document what we could probe.
 
 ### Dashboard security
 - API key required for ingestion
-- Sensitive audit data will require authentication (planned)
-- IP addresses redacted in public views
+- Password authentication for web access
+- Session-based login with secure cookies
+- Sensitive audit data protected
 
 ### Sanitization
 Before sending to LLM:
@@ -408,59 +445,6 @@ Before sending to LLM:
 - Home directory paths are redacted
 - Known secret environment variables are redacted
 - Visible placeholders so analysts know data was present
-
-## The Policy Engine: AI Safety Gate
-
-**Decision**: Implement a deterministic command validator in C that sits between LLM suggestions and user presentation.
-
-**The Problem**:
-LLMs can suggest dangerous commands. Even well-intentioned suggestions like "clean up disk space" might produce `rm -rf /`. We cannot trust AI output without validation.
-
-**Design Principles**:
-
-1. **Deny by default in strict mode**: If we don't explicitly recognize a command as safe, require human review.
-
-2. **No regex**: Regular expressions are a security liability (ReDoS attacks) and difficult to audit. We use simple string matching.
-
-3. **Layered checks**: 
-   - First: Check against blocked commands (rm -rf /, fork bombs, etc.)
-   - Second: Check for dangerous patterns (pipes to shell, writes to /etc)
-   - Third: Apply custom rules
-   - Fourth: Check against safe list (in strict mode)
-   - Fifth: Warn on state-modifying commands (sudo, systemctl)
-
-4. **Audit trail**: Every decision is logged with the matched rule.
-
-**Battle Scars Encoded**:
-
-| Blocked Pattern | Incident Type |
-|----------------|---------------|
-| `rm -rf /` | The classic. Always blocked. |
-| `curl\|sh` | Supply chain attack vector |
-| `> /etc/passwd` | Privilege escalation |
-| `--no-preserve-root` | Trying to bypass safeguards |
-| `:(){:\|:&};:` | Fork bomb |
-| `chmod 777 /` | Security disaster |
-
-## Drift Detection Philosophy
-
-**Decision**: Build fingerprint comparison as a first-class tool (`sentinel-diff`) and baseline deviation detection.
-
-**The "Identical Systems" Lie**:
-In 30 years of UNIX, I've never seen two systems that Ops claimed were "identical" actually be identical. There's always:
-- A kernel parameter that got changed during debugging and never reverted
-- A cron job that exists on one but not the other
-- A config file that drifted after a failed deployment
-- Package versions that don't match
-
-**Why Traditional Tools Miss This**:
-Monitoring tools compare each system against its own baseline. They don't compare systems against each other. If both systems have the same bug, neither alerts.
-
-**Two Approaches**:
-1. **sentinel-diff**: Compare two JSON fingerprints (different systems)
-2. **--baseline**: Compare current state against learned normal (same system over time)
-
-Both detect drift; different use cases.
 
 ## Lessons from 30 Years of UNIX
 
@@ -475,7 +459,9 @@ This tool embeds certain assumptions from experience:
 7. **Missing services are emergencies**: If a port was supposed to be listening and isn't, something failed.
 8. **Context is everything**: "File accessed" is one thing; "file accessed by script spawned from web server" is an incident.
 9. **Baselines should be learned, not configured**: What's "normal" for one system isn't normal for another.
-10. **The simple approach often wins**: 76KB of C beats 100MB of dependencies.
+10. **The simple approach often wins**: 99KB of C beats 100MB of dependencies.
+11. **Explainability beats precision**: A score users understand is better than a score that's technically more accurate but opaque.
+12. **Alert fatigue is real**: One actionable alert beats ten noisy ones.
 
 These aren't just heuristics—they're battle scars.
 

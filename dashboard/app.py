@@ -6,6 +6,9 @@ A web interface for viewing system fingerprints across multiple hosts.
 
 import os
 import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -21,10 +24,118 @@ DB_CONFIG = {
     'port': os.environ.get('DB_PORT', '5432'),
     'database': os.environ.get('DB_NAME', 'sentinel'),
     'user': os.environ.get('DB_USER', 'sentinel'),
-    'password': os.environ.get('DB_PASSWORD', 'your_db_pass_secured'),
+    'password': os.environ.get('DB_PASSWORD', 'your_db_password'),
 }
 
-API_KEY = os.environ.get('SENTINEL_API_KEY', 'change-me-in-production')
+API_KEY = os.environ.get('SENTINEL_API_KEY', 'your_api_key')
+
+# Email alerting configuration
+EMAIL_CONFIG = {
+    'enabled': os.environ.get('ALERT_EMAIL_ENABLED', 'true').lower() == 'true',
+    'smtp_host': os.environ.get('ALERT_SMTP_HOST', 'smtp.gmail.com'),
+    'smtp_port': int(os.environ.get('ALERT_SMTP_PORT', '587')),
+    'smtp_user': os.environ.get('ALERT_SMTP_USER', ''),
+    'smtp_pass': os.environ.get('ALERT_SMTP_PASS', ''),
+    'from_addr': os.environ.get('ALERT_FROM', ''),
+    'to_addr': os.environ.get('ALERT_TO', ''),
+    'cooldown_minutes': int(os.environ.get('ALERT_COOLDOWN_MINS', '60')),
+}
+
+# Track last alert time per host to avoid spam
+_last_alert = {}
+
+
+def send_alert_email(hostname, subject, body):
+    """Send an alert email."""
+    if not EMAIL_CONFIG['enabled']:
+        return False
+    
+    if not EMAIL_CONFIG['smtp_user'] or not EMAIL_CONFIG['to_addr']:
+        app.logger.warning("Email alerting not configured")
+        return False
+    
+    # Check cooldown
+    now = datetime.now()
+    last = _last_alert.get(hostname)
+    if last and (now - last).total_seconds() < EMAIL_CONFIG['cooldown_minutes'] * 60:
+        app.logger.info(f"Alert cooldown active for {hostname}")
+        return False
+    
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_CONFIG['from_addr']
+        msg['To'] = EMAIL_CONFIG['to_addr']
+        msg['Subject'] = subject
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        with smtplib.SMTP(EMAIL_CONFIG['smtp_host'], EMAIL_CONFIG['smtp_port']) as server:
+            server.starttls()
+            server.login(EMAIL_CONFIG['smtp_user'], EMAIL_CONFIG['smtp_pass'])
+            server.send_message(msg)
+        
+        _last_alert[hostname] = now
+        app.logger.info(f"Alert email sent for {hostname}")
+        return True
+        
+    except Exception as e:
+        app.logger.error(f"Failed to send alert email: {e}")
+        return False
+
+
+def check_and_send_alerts(hostname, audit_data):
+    """Check alert conditions and send email if triggered."""
+    if not audit_data or not audit_data.get('enabled'):
+        return
+    
+    risk_score = audit_data.get('risk_score', 0)
+    risk_level = audit_data.get('risk_level', 'low')
+    brute_force = audit_data.get('authentication', {}).get('brute_force_detected', False)
+    tmp_execs = audit_data.get('process_activity', {}).get('tmp_executions', 0)
+    devshm_execs = audit_data.get('process_activity', {}).get('devshm_executions', 0)
+    risk_factors = audit_data.get('risk_factors', [])
+    
+    alerts = []
+    
+    # Check conditions
+    if risk_score >= 16:
+        alerts.append(f"Risk score is {risk_level.upper()} ({risk_score})")
+    
+    if brute_force:
+        alerts.append("Brute force attack pattern detected")
+    
+    if tmp_execs > 0:
+        alerts.append(f"{tmp_execs} execution(s) from /tmp")
+    
+    if devshm_execs > 0:
+        alerts.append(f"{devshm_execs} execution(s) from /dev/shm")
+    
+    if not alerts:
+        return
+    
+    # Build email
+    subject = f"🚨 C-Sentinel Alert: {hostname} - {risk_level.upper()}"
+    
+    body = f"""C-Sentinel Security Alert
+========================
+
+Host: {hostname}
+Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Risk Score: {risk_score} ({risk_level.upper()})
+
+Alerts Triggered:
+{chr(10).join('  • ' + a for a in alerts)}
+
+Risk Factors:
+{chr(10).join('  • ' + f['reason'] + ' (+' + str(f['weight']) + ')' for f in risk_factors) if risk_factors else '  None'}
+
+Dashboard: https://sentinel.speytech.com/host/{hostname}
+
+---
+This is an automated alert from C-Sentinel.
+"""
+    
+    send_alert_email(hostname, subject, body)
 
 
 def get_db():
@@ -211,6 +322,9 @@ def ingest_fingerprint():
         conn.commit()
         cur.close()
         conn.close()
+        
+        # Check for alert conditions
+        check_and_send_alerts(hostname, audit)
         
         return jsonify({
             'status': 'ok',

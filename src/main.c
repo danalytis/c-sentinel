@@ -177,6 +177,16 @@ static int run_analysis(const char **configs, int config_count,
     if (audit_mode) {
         audit = probe_audit(300);  /* Last 5 minutes */
         g_audit_summary = audit;
+        
+        /* Auto-update baseline on each probe */
+        if (audit && audit->enabled) {
+            audit_baseline_t baseline = {0};
+            load_audit_baseline(&baseline);
+            update_audit_baseline(&baseline, audit);
+            save_audit_baseline(&baseline);
+            /* Update sample count in summary for JSON output */
+            audit->baseline_sample_count = baseline.sample_count;
+        }
     }
     
     /* Always do quick analysis for exit code calculation */
