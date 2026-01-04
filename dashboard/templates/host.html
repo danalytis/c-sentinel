@@ -49,12 +49,13 @@
                 
                 <!-- Desktop Navigation -->
                 <div class="hide-mobile flex items-center space-x-4" data-desktop-nav>
-                    {% if session.role == 'admin' %}
+                    {% if session.role == 'admin' and not session.demo_mode %}
                     <a href="/admin/users" class="text-gray-400 hover:text-white flex items-center text-sm">
                         <i data-lucide="users" class="w-4 h-4 mr-1"></i>
                         Users
                     </a>
                     {% endif %}
+                    {% if not session.demo_mode %}
                     <a href="/profile" class="text-gray-400 hover:text-white flex items-center text-sm">
                         <i data-lucide="user" class="w-4 h-4 mr-1"></i>
                         {{ session.username }}
@@ -63,12 +64,24 @@
                         <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
                         Logout
                     </a>
+                    {% else %}
+                    <a href="https://github.com/williamofai/c-sentinel" class="text-gray-400 hover:text-white flex items-center text-sm" target="_blank">
+                        <i data-lucide="github" class="w-4 h-4 mr-1"></i>
+                        GitHub
+                    </a>
+                    {% endif %}
                 </div>
                 
-                <!-- Mobile Burger -->
+                <!-- Mobile Burger / GitHub -->
+                {% if not session.demo_mode %}
                 <button onclick="openMobileMenu()" class="show-mobile p-2 text-gray-400 hover:text-white">
                     <i data-lucide="menu" class="w-6 h-6"></i>
                 </button>
+                {% else %}
+                <a href="https://github.com/williamofai/c-sentinel" class="show-mobile p-2 text-gray-400 hover:text-white" target="_blank">
+                    <i data-lucide="github" class="w-6 h-6"></i>
+                </a>
+                {% endif %}
             </div>
         </div>
     </header>

@@ -37,6 +37,7 @@ SESSION_LIFETIME_DAYS = int(os.environ.get('SESSION_LIFETIME_DAYS', '7'))
 # App configuration for templates
 app.config['VERSION'] = '0.6.0'
 app.config['ANALYTICS_SCRIPT'] = os.environ.get('ANALYTICS_SCRIPT', '')
+app.config['DEMO_MODE'] = os.environ.get('DEMO_MODE', 'false').lower() == 'true'
 
 
 def get_client_ip():
@@ -71,6 +72,9 @@ API_KEY = os.environ.get('SENTINEL_API_KEY', 'change-me-in-production')
 # Dashboard authentication
 ADMIN_PASSWORD_HASH = os.environ.get('SENTINEL_ADMIN_PASSWORD_HASH', '')
 
+# Demo mode - read-only public access without login
+DEMO_MODE = os.environ.get('DEMO_MODE', 'false').lower() == 'true'
+
 # Email alerting configuration
 EMAIL_CONFIG = {
     'enabled': os.environ.get('ALERT_EMAIL_ENABLED', 'false').lower() == 'true',
@@ -83,8 +87,18 @@ EMAIL_CONFIG = {
     'cooldown_minutes': int(os.environ.get('ALERT_COOLDOWN_MINS', '60')),
 }
 
+# Slack webhook configuration
+SLACK_CONFIG = {
+    'enabled': os.environ.get('ALERT_SLACK_ENABLED', 'false').lower() == 'true',
+    'webhook_url': os.environ.get('ALERT_SLACK_WEBHOOK', ''),
+    'channel': os.environ.get('ALERT_SLACK_CHANNEL', ''),  # Optional override
+    'username': os.environ.get('ALERT_SLACK_USERNAME', 'C-Sentinel'),
+    'cooldown_minutes': int(os.environ.get('ALERT_COOLDOWN_MINS', '60')),
+}
+
 # Track last alert time per host to avoid spam
 _last_alert = {}
+_last_slack_alert = {}
 
 
 def send_alert_email(hostname, subject, body):
@@ -122,6 +136,147 @@ def send_alert_email(hostname, subject, body):
         
     except Exception as e:
         app.logger.error(f"Failed to send alert email: {e}")
+        return False
+
+
+def send_slack_alert(hostname, risk_level, risk_score, alerts, risk_factors, dashboard_url=None):
+    """Send an alert to Slack via webhook."""
+    import urllib.request
+    import urllib.error
+    
+    if not SLACK_CONFIG['enabled']:
+        return False
+    
+    if not SLACK_CONFIG['webhook_url']:
+        app.logger.warning("Slack webhook URL not configured")
+        return False
+    
+    # Check cooldown
+    now = datetime.now()
+    last = _last_slack_alert.get(hostname)
+    if last and (now - last).total_seconds() < SLACK_CONFIG['cooldown_minutes'] * 60:
+        app.logger.info(f"Slack alert cooldown active for {hostname}")
+        return False
+    
+    # Build Slack message with blocks for rich formatting
+    dashboard_link = dashboard_url or os.environ.get('DASHBOARD_URL', 'https://sentinel.example.com')
+    
+    # Colour based on risk level
+    color = {
+        'low': '#22c55e',      # green
+        'medium': '#eab308',   # yellow
+        'high': '#f97316',     # orange
+        'critical': '#ef4444'  # red
+    }.get(risk_level, '#6b7280')
+    
+    # Build alert list
+    alert_text = '\n'.join(f'• {a}' for a in alerts) if alerts else 'No specific alerts'
+    
+    # Build risk factors
+    factors_text = '\n'.join(
+        f'• {f["reason"]} (+{f["weight"]})'
+        for f in risk_factors
+    ) if risk_factors else 'None'
+    
+    payload = {
+        'username': SLACK_CONFIG['username'],
+        'icon_emoji': ':shield:',
+        'attachments': [{
+            'color': color,
+            'blocks': [
+                {
+                    'type': 'header',
+                    'text': {
+                        'type': 'plain_text',
+                        'text': f'🚨 Security Alert: {hostname}',
+                        'emoji': True
+                    }
+                },
+                {
+                    'type': 'section',
+                    'fields': [
+                        {
+                            'type': 'mrkdwn',
+                            'text': f'*Host:*\n{hostname}'
+                        },
+                        {
+                            'type': 'mrkdwn',
+                            'text': f'*Risk Level:*\n{risk_level.upper()}'
+                        },
+                        {
+                            'type': 'mrkdwn',
+                            'text': f'*Risk Score:*\n{risk_score}'
+                        },
+                        {
+                            'type': 'mrkdwn',
+                            'text': f'*Time:*\n{now.strftime("%Y-%m-%d %H:%M:%S")}'
+                        }
+                    ]
+                },
+                {
+                    'type': 'section',
+                    'text': {
+                        'type': 'mrkdwn',
+                        'text': f'*Alerts Triggered:*\n{alert_text}'
+                    }
+                },
+                {
+                    'type': 'section',
+                    'text': {
+                        'type': 'mrkdwn',
+                        'text': f'*Risk Factors:*\n{factors_text}'
+                    }
+                },
+                {
+                    'type': 'actions',
+                    'elements': [{
+                        'type': 'button',
+                        'text': {
+                            'type': 'plain_text',
+                            'text': '🔍 View Dashboard',
+                            'emoji': True
+                        },
+                        'url': f'{dashboard_link}/host/{hostname}',
+                        'style': 'primary'
+                    }]
+                },
+                {
+                    'type': 'context',
+                    'elements': [{
+                        'type': 'mrkdwn',
+                        'text': 'Sent by C-Sentinel'
+                    }]
+                }
+            ]
+        }]
+    }
+    
+    # Add channel override if specified
+    if SLACK_CONFIG['channel']:
+        payload['channel'] = SLACK_CONFIG['channel']
+    
+    try:
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(
+            SLACK_CONFIG['webhook_url'],
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status == 200:
+                _last_slack_alert[hostname] = now
+                app.logger.info(f"Slack alert sent for {hostname}")
+                return True
+            else:
+                app.logger.error(f"Slack webhook returned status {response.status}")
+                return False
+                
+    except urllib.error.URLError as e:
+        app.logger.error(f"Failed to send Slack alert: {e}")
+        return False
+    except Exception as e:
+        app.logger.error(f"Failed to send Slack alert: {e}")
         return False
 
 
@@ -276,7 +431,7 @@ If you have questions about this change, please contact your administrator."""
 
 
 def check_and_send_alerts(hostname, audit_data):
-    """Check alert conditions and send email if triggered."""
+    """Check alert conditions and send notifications via email and Slack."""
     if not audit_data or not audit_data.get('enabled'):
         return
     
@@ -305,7 +460,9 @@ def check_and_send_alerts(hostname, audit_data):
     if not alerts:
         return
     
-    # Build email
+    dashboard_url = os.environ.get('DASHBOARD_URL', 'https://your-dashboard.com')
+    
+    # Send email alert
     subject = f"🚨 C-Sentinel Alert: {hostname} - {risk_level.upper()}"
     
     body = f"""C-Sentinel Security Alert
@@ -321,13 +478,16 @@ Alerts Triggered:
 Risk Factors:
 {chr(10).join('  • ' + f['reason'] + ' (+' + str(f['weight']) + ')' for f in risk_factors) if risk_factors else '  None'}
 
-Dashboard: {os.environ.get('DASHBOARD_URL', 'https://your-dashboard.com')}/host/{hostname}
+Dashboard: {dashboard_url}/host/{hostname}
 
 ---
 This is an automated alert from C-Sentinel.
 """
     
     send_alert_email(hostname, subject, body)
+    
+    # Send Slack alert
+    send_slack_alert(hostname, risk_level, risk_score, alerts, risk_factors, dashboard_url)
 
 
 def get_db():
@@ -450,40 +610,52 @@ def validate_session():
 
 
 def require_login(f):
-    """Decorator to require dashboard login."""
+    """Decorator to require dashboard login (bypassed in demo mode for non-authenticated users)."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not ADMIN_PASSWORD_HASH:
-            # No password configured, allow access
-            return f(*args, **kwargs)
-        
-        # Check for database session first (multi-user mode)
+        # Check for real authenticated session first (takes priority over demo mode)
         if session.get('session_token'):
             user = validate_session()
             if user:
-                # Update session with current user info
                 session['user_id'] = user['user_id']
                 session['username'] = user['username']
                 session['role'] = user['role']
                 session['authenticated'] = True
+                session['demo_mode'] = False  # Real user, not demo
                 return f(*args, **kwargs)
             else:
-                # Invalid session, clear it
                 session.clear()
-                return redirect(url_for('login'))
+                return redirect(url_for('login', admin=1) if DEMO_MODE else url_for('login'))
         
-        # Fall back to simple auth check (single-password mode)
-        if not session.get('authenticated'):
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
+        # Check simple auth (single-password mode)
+        if session.get('authenticated') and not session.get('demo_mode'):
+            return f(*args, **kwargs)
+        
+        # No password configured - allow access
+        if not ADMIN_PASSWORD_HASH:
+            return f(*args, **kwargs)
+        
+        # Demo mode - allow read-only access without login
+        if DEMO_MODE:
+            session['demo_mode'] = True
+            session['username'] = 'demo'
+            session['role'] = 'viewer'
+            session['authenticated'] = True
+            return f(*args, **kwargs)
+        
+        # Not authenticated, redirect to login
+        return redirect(url_for('login'))
     return decorated
 
 
 def require_role(*roles):
-    """Decorator to require specific user roles."""
+    """Decorator to require specific user roles (blocks demo mode)."""
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
+            # Demo mode users cannot access role-protected routes
+            if session.get('demo_mode'):
+                return jsonify({'error': 'Not available in demo mode'}), 403
             # Check if authenticated at all
             if not session.get('authenticated'):
                 return redirect(url_for('login'))
@@ -634,6 +806,10 @@ def log_user_action(user_id, action, details=None):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """Dashboard login page."""
+    # Demo mode - redirect to dashboard UNLESS ?admin=1 is in URL
+    if DEMO_MODE and not request.args.get('admin'):
+        return redirect(url_for('index'))
+    
     # Check if multi-user is enabled (users table exists and has users)
     multi_user = False
     try:

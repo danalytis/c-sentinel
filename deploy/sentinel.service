@@ -53,6 +53,10 @@ Environment="ALERT_SLACK_USERNAME=C-Sentinel"
 # Optional: override default webhook channel
 # Environment="ALERT_SLACK_CHANNEL=#security-alerts"
 
+# Demo mode (optional - enables read-only public access without login)
+# Useful for showcasing the dashboard publicly
+Environment="DEMO_MODE=false"
+
 # Restart policy
 Restart=on-failure
 RestartSec=5

@@ -46,9 +46,10 @@ A lightweight, portable system prober written in C that captures "system fingerp
 - 🔑 **Personal API Keys** - Per-user API keys for automation and CI/CD
 - 📋 **Admin Audit Log** - Track all user actions with filtering
 - 💻 **Session Management** - View active sessions, revoke access, force logout
-- 📧 **User Email Notifications** - Login alerts, password changes, account events
+- 📧 **Email & Slack Alerts** - Proactive notifications with rich formatting
 - 🎨 **Modern Toast Notifications** - No more 1990s JavaScript alerts!
-- 🌐 **Real Client IP Detection** - Proper X-Forwarded-For handling behind proxies
+- 👁️ **Public Demo Mode** - Read-only access for showcasing your dashboard
+- 📱 **Mobile Responsive** - Full functionality on phones and tablets
 
 ### Previous Releases
 
@@ -366,6 +367,23 @@ To get a webhook URL:
 
 See [dashboard/README.md](dashboard/README.md) for full setup instructions.
 
+### Public Demo Mode
+
+Enable read-only public access for showcasing your dashboard:
+
+```bash
+Environment="DEMO_MODE=true"
+```
+
+In demo mode:
+- No login required - visitors go straight to dashboard
+- Read-only access (viewer role)
+- Admin features hidden
+- Profile/logout links replaced with GitHub link
+- Yellow banner indicates demo mode
+
+Great for LinkedIn posts, blog articles, or letting prospects explore before deploying.
+
 ## Systemd Service
 
 For production deployment:
@@ -440,7 +458,7 @@ sudo journalctl -u sentinel -f
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Web Dashboard                              │
-│  • Multi-user auth (RBAC)      • Two-factor authentication      │
+│  • Multi-user auth (RBAC)      • Two-factor authentication     │
 │  • Personal API keys           • Session management             │
 │  • Admin audit log             • Email & Slack alerts           │
 │  • Security posture summary    • Risk trend sparkline           │

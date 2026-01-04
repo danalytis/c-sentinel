@@ -98,6 +98,15 @@
 </head>
 <body class="{% block body_class %}bg-gray-900 text-gray-100 min-h-screen{% endblock %}">
     {% block body %}
+    
+    <!-- Demo Mode Banner (only for demo users, not logged-in admins) -->
+    {% if session.demo_mode %}
+    <div class="bg-amber-600 text-black px-4 py-2 text-center text-sm font-medium">
+        <i data-lucide="eye" class="w-4 h-4 inline mr-1"></i>
+        Demo Mode — Read-only access. <a href="https://github.com/williamofai/c-sentinel" class="underline hover:no-underline">Get C-Sentinel</a> for your own infrastructure.
+    </div>
+    {% endif %}
+    
     {% block header %}{% endblock %}
     
     <main>
