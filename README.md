@@ -179,14 +179,16 @@ The system learns what's "normal" for your environment:
 
 A mini chart showing 24-hour risk score history - instantly see if things are getting better or worse.
 
-### Email Alerts
+### Email & Slack Alerts
 
-Automatic notifications when:
+Automatic notifications via email and/or Slack when:
 - Risk score ≥ 16 (high/critical)
 - Brute force attack detected
 - Executions from /tmp or /dev/shm
 - User login from new IP
 - Password or 2FA changes
+
+Slack alerts include rich formatting with colour-coded severity, clickable dashboard links, and structured risk factor details.
 
 ## Auditd Integration
 
@@ -346,6 +348,22 @@ ALERT_TO=alerts@email.com
 ALERT_COOLDOWN_MINS=60
 ```
 
+### Slack Webhook Configuration
+
+```bash
+ALERT_SLACK_ENABLED=true
+ALERT_SLACK_WEBHOOK=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
+ALERT_SLACK_CHANNEL=#security-alerts    # Optional - override default webhook channel
+ALERT_SLACK_USERNAME=C-Sentinel         # Optional - bot display name
+```
+
+To get a webhook URL:
+1. Go to [api.slack.com/apps](https://api.slack.com/apps)
+2. Create a new app → "From scratch"
+3. Enable "Incoming Webhooks"
+4. Click "Add New Webhook to Workspace"
+5. Select a channel and copy the webhook URL
+
 See [dashboard/README.md](dashboard/README.md) for full setup instructions.
 
 ## Systemd Service
@@ -424,7 +442,7 @@ sudo journalctl -u sentinel -f
 │                      Web Dashboard                              │
 │  • Multi-user auth (RBAC)      • Two-factor authentication      │
 │  • Personal API keys           • Session management             │
-│  • Admin audit log             • Email notifications            │
+│  • Admin audit log             • Email & Slack alerts           │
 │  • Security posture summary    • Risk trend sparkline           │
 │  • Explainable risk factors    • Event history timeline         │
 │  • Multi-host view             • Historical charts              │
@@ -515,10 +533,11 @@ c-sentinel/
 - [x] **Personal API keys**
 - [x] **Admin audit log**
 - [x] **Session management**
+- [x] **Slack webhook alerts**
 
 ### Planned 📋
 - [ ] FreeBSD/macOS support
-- [ ] Slack/Teams webhook alerts
+- [ ] Microsoft Teams webhook alerts
 - [ ] Custom alert rules
 - [ ] PDF security reports
 - [ ] Host-level permissions

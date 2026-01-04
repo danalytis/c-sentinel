@@ -61,6 +61,32 @@
         }
         .toast-enter { animation: toast-in 0.3s ease-out; }
         .toast-exit { animation: toast-out 0.3s ease-in forwards; }
+        
+        /* Mobile menu */
+        .mobile-menu {
+            transform: translateX(100%);
+            transition: transform 0.3s ease-in-out;
+        }
+        .mobile-menu.open {
+            transform: translateX(0);
+        }
+        
+        /* Responsive table wrapper */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        /* Hide on mobile */
+        @media (max-width: 768px) {
+            .hide-mobile { display: none !important; }
+        }
+        
+        /* Show only on mobile */
+        .show-mobile { display: none !important; }
+        @media (max-width: 768px) {
+            .show-mobile { display: flex !important; }
+        }
     </style>
     
     {% block head %}{% endblock %}
@@ -78,13 +104,32 @@
         {% block content %}{% endblock %}
     </main>
     
+    <!-- Mobile Menu Overlay -->
+    <div id="mobile-menu-overlay" class="fixed inset-0 bg-black/50 z-40 hidden" onclick="closeMobileMenu()"></div>
+    
+    <!-- Mobile Menu Drawer -->
+    <div id="mobile-menu" class="mobile-menu fixed top-0 right-0 h-full w-64 bg-gray-800 border-l border-gray-700 z-50 flex flex-col">
+        <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+            <span class="font-semibold">Menu</span>
+            <button onclick="closeMobileMenu()" class="p-2 text-gray-400 hover:text-white">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <nav class="flex-1 p-4 space-y-2" id="mobile-menu-items">
+            <!-- Populated by JavaScript -->
+        </nav>
+        <div class="p-4 border-t border-gray-700 text-sm text-gray-500">
+            C-Sentinel v{{ config.VERSION }}
+        </div>
+    </div>
+    
     <!-- Toast Container -->
-    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col space-y-2"></div>
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col space-y-2 max-w-[calc(100vw-2rem)]"></div>
     
     {% block footer %}
-    <footer class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center text-sm text-gray-500 border-t border-gray-800 mt-8">
+    <footer class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center text-sm text-gray-500 border-t border-gray-800 mt-8 space-y-2 sm:space-y-0">
         <span>C-Sentinel v{{ config.VERSION }}</span>
-        <span>Last updated: <span id="last-updated">-</span></span>
+        <span class="hide-mobile">Last updated: <span id="last-updated">-</span></span>
         <a href="https://github.com/williamofai/c-sentinel" class="hover:text-gray-300 flex items-center">
             <i data-lucide="github" class="w-4 h-4 mr-1"></i>
             GitHub
@@ -106,6 +151,44 @@
             }
         }
         updateLastUpdated();
+        
+        // Mobile menu functions
+        function openMobileMenu() {
+            document.getElementById('mobile-menu').classList.add('open');
+            document.getElementById('mobile-menu-overlay').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeMobileMenu() {
+            document.getElementById('mobile-menu').classList.remove('open');
+            document.getElementById('mobile-menu-overlay').classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+        
+        // Populate mobile menu from desktop nav
+        function populateMobileMenu() {
+            const mobileMenuItems = document.getElementById('mobile-menu-items');
+            const desktopNav = document.querySelector('[data-desktop-nav]');
+            
+            if (!mobileMenuItems || !desktopNav) return;
+            
+            const links = desktopNav.querySelectorAll('a');
+            mobileMenuItems.innerHTML = '';
+            
+            links.forEach(link => {
+                const clone = document.createElement('a');
+                clone.href = link.href;
+                clone.className = 'flex items-center px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white';
+                clone.innerHTML = link.innerHTML;
+                clone.onclick = closeMobileMenu;
+                mobileMenuItems.appendChild(clone);
+            });
+            
+            lucide.createIcons();
+        }
+        
+        // Initialize mobile menu on load
+        document.addEventListener('DOMContentLoaded', populateMobileMenu);
         
         // Toast notification system
         const Toast = {

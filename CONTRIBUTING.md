@@ -137,6 +137,21 @@ c-sentinel/
     └── DESIGN_DECISIONS.md
 ```
 
+## Good First Issues
+
+Looking for something to start with? These are beginner-friendly:
+
+| Issue | Description | Skills |
+|-------|-------------|--------|
+| **CMake build** | Add CMake as alternative to Make | CMake |
+| **macOS support** | Port /proc parsing to sysctl | C, macOS |
+| **Colour output** | Add `--color` flag for terminal | C |
+| **Dashboard dark/light toggle** | Theme switcher | HTML/JS |
+| **Config file support** | Load settings from `/etc/sentinel.conf` | C |
+| **Man page** | Write `sentinel(1)` manual page | Documentation |
+
+Look for issues labelled [`good first issue`](https://github.com/williamofai/c-sentinel/labels/good%20first%20issue) on GitHub.
+
 ## Areas Where Help is Wanted
 
 We'd particularly welcome contributions in:

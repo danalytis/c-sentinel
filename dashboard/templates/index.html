@@ -4,18 +4,21 @@
 
 {% block header %}
 <header class="bg-gray-800 border-b border-gray-700">
-    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
-                <i data-lucide="shield-check" class="w-6 h-6"></i>
-            </div>
-            <div>
-                <h1 class="text-xl font-bold">C-Sentinel</h1>
-                <p class="text-xs text-gray-400">Semantic Observability</p>
-            </div>
-        </div>
-        <div class="flex items-center space-x-6">
-            <div id="stats" class="flex items-center space-x-6 text-sm">
+    <div class="max-w-7xl mx-auto px-4 py-4">
+        <div class="flex items-center justify-between">
+            <!-- Logo - clickable link to home -->
+            <a href="/" class="flex items-center space-x-3 hover:opacity-80 transition-opacity">
+                <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
+                    <i data-lucide="shield-check" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold">C-Sentinel</h1>
+                    <p class="text-xs text-gray-400 hide-mobile">Semantic Observability</p>
+                </div>
+            </a>
+            
+            <!-- Stats - hide on mobile -->
+            <div id="stats" class="hide-mobile flex items-center space-x-6 text-sm">
                 <div class="text-center">
                     <div id="stat-total" class="text-2xl font-bold">-</div>
                     <div class="text-gray-400">Hosts</div>
@@ -29,7 +32,9 @@
                     <div class="text-gray-400">Critical</div>
                 </div>
             </div>
-            <div class="flex items-center space-x-4">
+            
+            <!-- Desktop Navigation -->
+            <div class="hide-mobile flex items-center space-x-4" data-desktop-nav>
                 {% if session.role == 'admin' %}
                 <a href="/admin/users" class="text-gray-400 hover:text-white flex items-center text-sm">
                     <i data-lucide="users" class="w-4 h-4 mr-1"></i>
@@ -44,6 +49,18 @@
                     <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
                     Logout
                 </a>
+            </div>
+            
+            <!-- Mobile: Stats summary + Burger -->
+            <div class="show-mobile items-center space-x-4">
+                <div class="flex items-center space-x-3 text-sm">
+                    <span id="stat-total-mobile" class="font-bold">-</span>
+                    <span class="text-gray-500">|</span>
+                    <span id="stat-critical-mobile" class="font-bold text-red-400">-</span>
+                </div>
+                <button onclick="openMobileMenu()" class="p-2 text-gray-400 hover:text-white">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -209,9 +226,16 @@
             if (response.status === 401) return;
             const stats = await response.json();
             
+            // Desktop stats
             document.getElementById('stat-total').textContent = stats.total_hosts;
             document.getElementById('stat-active').textContent = stats.active_hosts;
             document.getElementById('stat-critical').textContent = stats.critical_hosts;
+            
+            // Mobile stats
+            const mobileTotal = document.getElementById('stat-total-mobile');
+            const mobileCritical = document.getElementById('stat-critical-mobile');
+            if (mobileTotal) mobileTotal.textContent = stats.total_hosts + ' hosts';
+            if (mobileCritical) mobileCritical.textContent = stats.critical_hosts + ' critical';
             
         } catch (error) {
             console.error('Failed to load stats:', error);

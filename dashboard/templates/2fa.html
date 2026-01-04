@@ -4,30 +4,40 @@
 
 {% block header %}
 <header class="bg-gray-800 border-b border-gray-700">
-    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-        <div class="flex items-center space-x-4">
-            <a href="/profile" class="text-gray-400 hover:text-white">
-                <i data-lucide="arrow-left" class="w-5 h-5"></i>
-            </a>
-            <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
-                    <i data-lucide="shield-check" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold">Two-Factor Authentication</h1>
-                    <p class="text-xs text-gray-400">Secure your account with 2FA</p>
-                </div>
+    <div class="max-w-7xl mx-auto px-4 py-4">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <a href="/profile" class="text-gray-400 hover:text-white">
+                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                </a>
+                <a href="/" class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
+                        <i data-lucide="shield-check" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold hide-mobile">Two-Factor Authentication</h1>
+                        <h1 class="text-xl font-bold show-mobile">2FA Setup</h1>
+                        <p class="text-xs text-gray-400 hide-mobile">Secure your account with 2FA</p>
+                    </div>
+                </a>
             </div>
-        </div>
-        <div class="flex items-center space-x-4">
-            <a href="/profile" class="text-gray-400 hover:text-white flex items-center text-sm">
-                <i data-lucide="user" class="w-4 h-4 mr-1"></i>
-                {{ session.username }}
-            </a>
-            <a href="/logout" class="text-gray-400 hover:text-white flex items-center text-sm">
-                <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
-                Logout
-            </a>
+            
+            <!-- Desktop Navigation -->
+            <div class="hide-mobile flex items-center space-x-4" data-desktop-nav>
+                <a href="/profile" class="text-gray-400 hover:text-white flex items-center text-sm">
+                    <i data-lucide="user" class="w-4 h-4 mr-1"></i>
+                    {{ session.username }}
+                </a>
+                <a href="/logout" class="text-gray-400 hover:text-white flex items-center text-sm">
+                    <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
+                    Logout
+                </a>
+            </div>
+            
+            <!-- Mobile Burger -->
+            <button onclick="openMobileMenu()" class="show-mobile p-2 text-gray-400 hover:text-white">
+                <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
         </div>
     </div>
 </header>

@@ -32,7 +32,7 @@ Environment="FLASK_SECRET_KEY=CHANGE_ME_generate_with_secrets_token_hex_32"
 # Generate with: echo -n 'yourpassword' | sha256sum | cut -d' ' -f1
 Environment="SENTINEL_ADMIN_PASSWORD_HASH=CHANGE_ME_sha256_hash_of_your_password"
 
-# Dashboard URL (used in email alert links)
+# Dashboard URL (used in alert links)
 Environment="DASHBOARD_URL=https://your-domain.com"
 
 # Email alerting (optional - set ALERT_EMAIL_ENABLED=false to disable)
@@ -44,6 +44,14 @@ Environment="ALERT_SMTP_PASS=your-app-password"
 Environment="ALERT_FROM=your-email@gmail.com"
 Environment="ALERT_TO=alerts@your-domain.com"
 Environment="ALERT_COOLDOWN_MINS=60"
+
+# Slack alerting (optional - set ALERT_SLACK_ENABLED=false to disable)
+# Get webhook URL from: https://api.slack.com/apps → Create App → Incoming Webhooks
+Environment="ALERT_SLACK_ENABLED=false"
+Environment="ALERT_SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+Environment="ALERT_SLACK_USERNAME=C-Sentinel"
+# Optional: override default webhook channel
+# Environment="ALERT_SLACK_CHANNEL=#security-alerts"
 
 # Restart policy
 Restart=on-failure
