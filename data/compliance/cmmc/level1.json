@@ -1,0 +1,167 @@
+[
+  {
+    "id": "ac.l1-b.1.i",
+    "label": "AC.L1-b.1.i",
+    "title": "Authorized Access Control [FCI Data]",
+    "text": "Limit information system access to authorized users, processes acting on behalf of authorized users, or devices (including other information systems).",
+    "group": "ACCESS CONTROL",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "ac.l1-b.1.ii",
+    "label": "AC.L1-b.1.ii",
+    "title": "Transaction & Function Control [FCI",
+    "text": "Data] Limit information system access to the types of transactions and functions that authorized users are permitted to execute.",
+    "group": "ACCESS CONTROL",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "ac.l1-b.1.iii",
+    "label": "AC.L1-b.1.iii",
+    "title": "External Connections [FCI Data]",
+    "text": "Verify and control/limit connections to and use of external information systems.",
+    "group": "ACCESS CONTROL",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "ac.l1-b.1.iv",
+    "label": "AC.L1-b.1.iv",
+    "title": "Control Public Information [FCI Data]",
+    "text": "Control information posted or processed on publicly accessible information systems.",
+    "group": "ACCESS CONTROL",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "ia.l1-b.1.v",
+    "label": "IA.L1-b.1.v",
+    "title": "Identification [FCI Data]",
+    "text": "Identify information system users, processes acting on behalf of users, or devices.",
+    "group": "IDENTIFICATION AND AUTHENTICATION",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "ia.l1-b.1.vi",
+    "label": "IA.L1-b.1.vi",
+    "title": "Authentication [FCI Data]",
+    "text": "Authenticate (or verify) the identities of those users, processes, or devices, as a prerequisite to allowing access to organizational information systems.",
+    "group": "IDENTIFICATION AND AUTHENTICATION",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "mp.l1-b.1.vii",
+    "label": "MP.L1-b.1.vii",
+    "title": "Media Disposal [FCI Data]",
+    "text": "Sanitize or destroy information system media containing Federal Contract Information before disposal or release for reuse.",
+    "group": "MEDIA PROTECTION",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "pe.l1-b.1.viii",
+    "label": "PE.L1-b.1.viii",
+    "title": "Limit Physical Access [FCI Data]",
+    "text": "Limit physical access to organizational information systems, equipment, and the respective operating environments to authorized individuals.",
+    "group": "PHYSICAL PROTECTION",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "pe.l1-b.1.ix",
+    "label": "PE.L1-b.1.ix",
+    "title": "Manage Visitors & Physical Access",
+    "text": "[FCI Data] Escort visitors and monitor visitor activity; maintain audit logs of physical access; and control and manage physical access devices.",
+    "group": "PHYSICAL PROTECTION",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "sc.l1-b.1.x",
+    "label": "SC.L1-b.1.x",
+    "title": "Boundary Protection [FCI Data]",
+    "text": "Monitor, control, and protect organizational communications (i.e., information transmitted or received by organizational information systems) at the external boundaries and key internal boundaries of the information systems.",
+    "group": "SYSTEM AND COMMUNICATIONS PROTECTION",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "sc.l1-b.1.xi",
+    "label": "SC.L1-b.1.xi",
+    "title": "Public-Access System Separation",
+    "text": "[FCI Data] Implement subnetworks for publicly accessible system components that are physically or logically separated from internal networks.",
+    "group": "SYSTEM AND COMMUNICATIONS PROTECTION",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "si.l1-b.1.xii",
+    "label": "SI.L1-b.1.xii",
+    "title": "Flaw Remediation [FCI Data]",
+    "text": "Identify, report, and correct information and information system flaws in a timely manner.",
+    "group": "SYSTEM AND INFORMATION INTEGRITY",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "si.l1-b.1.xiii",
+    "label": "SI.L1-b.1.xiii",
+    "title": "Malicious Code Protection [FCI Data]",
+    "text": "Provide protection from malicious code at appropriate locations within organizational information systems.",
+    "group": "SYSTEM AND INFORMATION INTEGRITY",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "si.l1-b.1.xiv",
+    "label": "SI.L1-b.1.xiv",
+    "title": "Update Malicious Code Protection",
+    "text": "[FCI Data] Update malicious code protection mechanisms when new releases are available.",
+    "group": "SYSTEM AND INFORMATION INTEGRITY",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  },
+  {
+    "id": "si.l1-b.1.xv",
+    "label": "SI.L1-b.1.xv",
+    "title": "System & File Scanning [FCI Data]",
+    "text": "Perform periodic scans of the information system and real-time scans of files from external sources as files are downloaded, opened, or executed.",
+    "group": "SYSTEM AND INFORMATION INTEGRITY",
+    "parent_id": null,
+    "framework": "cmmc_level1",
+    "baseline": "level1",
+    "source": "CMMC 2.0"
+  }
+]

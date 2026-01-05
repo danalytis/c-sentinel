@@ -25,7 +25,6 @@ venv/
 
 # Output files
 output/
-*.json
 !examples/*.json
 
 # Docker
