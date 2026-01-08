@@ -7,8 +7,8 @@
  *
  * https://github.com/williamofai/c-sentinel
  *
- * prober.c - System state capture via /proc filesystem (Linux)
- *            and sysctl/mach APIs (macOS)
+ * prober.c - System state capture via /proc filesystem (Linux),
+ *            sysctl/mach APIs (macOS), and kvm/sysctl (BSD)
  */
 
 #define _GNU_SOURCE
@@ -72,6 +72,34 @@ static int count_fds(pid_t pid) {
     return buf_size / (int)PROC_PIDLISTFD_SIZE;
 }
 #endif /* PLATFORM_MACOS */
+
+#ifdef PLATFORM_BSD
+/* Count open file descriptors for a process via procstat/fstat */
+static int count_fds(pid_t pid) {
+    char cmd[128];
+    FILE *fp;
+    int count = 0;
+    
+#if defined(PLATFORM_FREEBSD) || defined(PLATFORM_DRAGONFLY)
+    /* FreeBSD/DragonFly: use procstat */
+    snprintf(cmd, sizeof(cmd), "procstat -f %d 2>/dev/null | wc -l", (int)pid);
+#else
+    /* OpenBSD/NetBSD: use fstat */
+    snprintf(cmd, sizeof(cmd), "fstat -p %d 2>/dev/null | wc -l", (int)pid);
+#endif
+    
+    fp = popen(cmd, "r");
+    if (fp) {
+        if (fscanf(fp, "%d", &count) == 1) {
+            count = count > 1 ? count - 1 : 0;  /* Subtract header */
+        }
+        pclose(fp);
+        if (count > 0) return count;
+    }
+    
+    return -1;  /* Unknown */
+}
+#endif /* PLATFORM_BSD */
 
 /* ============================================================
  * System Info Probing
@@ -151,7 +179,82 @@ int probe_system_info(system_info_t *info) {
         info->load_avg[1] = loadavg[1];
         info->load_avg[2] = loadavg[2];
     }
+
+#elif defined(PLATFORM_BSD)
+    /* BSD: use sysctl APIs */
+    size_t len;
+    
+    /* Total RAM */
+#if defined(PLATFORM_FREEBSD) || defined(PLATFORM_DRAGONFLY)
+    unsigned long physmem = 0;
+    len = sizeof(physmem);
+    if (sysctlbyname("hw.physmem", &physmem, &len, NULL, 0) == 0) {
+        info->total_ram = (uint64_t)physmem;
+    }
+#elif defined(PLATFORM_NETBSD)
+    int64_t physmem64 = 0;
+    len = sizeof(physmem64);
+    if (sysctlbyname("hw.physmem64", &physmem64, &len, NULL, 0) == 0) {
+        info->total_ram = (uint64_t)physmem64;
+    }
+#elif defined(PLATFORM_OPENBSD)
+    int mib[2] = { CTL_HW, HW_PHYSMEM64 };
+    int64_t physmem64 = 0;
+    len = sizeof(physmem64);
+    if (sysctl(mib, 2, &physmem64, &len, NULL, 0) == 0) {
+        info->total_ram = (uint64_t)physmem64;
+    }
 #endif
+
+    /* Free RAM */
+#if defined(PLATFORM_FREEBSD) || defined(PLATFORM_DRAGONFLY)
+    {
+        unsigned int free_count = 0;
+        int page_size = getpagesize();
+        len = sizeof(free_count);
+        if (sysctlbyname("vm.stats.vm.v_free_count", &free_count, &len, NULL, 0) == 0) {
+            info->free_ram = (uint64_t)free_count * page_size;
+        }
+    }
+#elif defined(PLATFORM_NETBSD) || defined(PLATFORM_OPENBSD)
+    {
+        struct uvmexp uvmexp;
+        int mib_uvm[2] = { CTL_VM, VM_UVMEXP };
+        len = sizeof(uvmexp);
+        if (sysctl(mib_uvm, 2, &uvmexp, &len, NULL, 0) == 0) {
+            info->free_ram = (uint64_t)uvmexp.free * uvmexp.pagesize;
+        }
+    }
+#endif
+
+    /* Uptime and boot time */
+    struct timeval boottime;
+    len = sizeof(boottime);
+#if defined(PLATFORM_OPENBSD)
+    {
+        int mib_boot[2] = { CTL_KERN, KERN_BOOTTIME };
+        if (sysctl(mib_boot, 2, &boottime, &len, NULL, 0) == 0) {
+            info->boot_time = boottime.tv_sec;
+            info->probe_time = time(NULL);
+            info->uptime_seconds = (uint64_t)(info->probe_time - info->boot_time);
+        }
+    }
+#else
+    if (sysctlbyname("kern.boottime", &boottime, &len, NULL, 0) == 0) {
+        info->boot_time = boottime.tv_sec;
+        info->probe_time = time(NULL);
+        info->uptime_seconds = (uint64_t)(info->probe_time - info->boot_time);
+    }
+#endif
+
+    /* Load average */
+    double loadavg[3];
+    if (getloadavg(loadavg, 3) != -1) {
+        info->load_avg[0] = loadavg[0];
+        info->load_avg[1] = loadavg[1];
+        info->load_avg[2] = loadavg[2];
+    }
+#endif /* PLATFORM_BSD */
 
     return 0;
 }
@@ -172,7 +275,7 @@ static int parse_proc_stat(pid_t pid, process_info_t *proc) {
     FILE *f = fopen(path, "r");
     if (!f) return -1;
     
-    if (fgets(buf, sizeof(buf), f) == NULL) {
+    if (!fgets(buf, sizeof(buf), f)) {
         fclose(f);
         return -1;
     }
@@ -236,6 +339,7 @@ static int parse_proc_stat(pid_t pid, process_info_t *proc) {
     
     /* Heuristic: process might be stuck if it's old and in certain states */
     /* D = uninterruptible sleep, often indicates I/O issues */
+    proc->is_potentially_stuck = 0;
     if (proc->state == 'D' && proc->age_seconds > 300) {
         proc->is_potentially_stuck = 1;
     }
@@ -392,6 +496,175 @@ int probe_processes(process_info_t *procs, int max_procs, int *count) {
 }
 
 #endif /* PLATFORM_MACOS */
+
+/* ============================================================
+ * Process Probing (BSD)
+ * ============================================================ */
+
+#ifdef PLATFORM_BSD
+
+/* Convert BSD process status to single-char state */
+static char bsd_state_to_char(int status) {
+    switch (status) {
+#ifdef SIDL
+        case SIDL:    return 'I';  /* Idle (being created) */
+#endif
+#ifdef SRUN
+        case SRUN:    return 'R';  /* Running */
+#endif
+#ifdef SSLEEP
+        case SSLEEP:  return 'S';  /* Sleeping */
+#endif
+#ifdef SSTOP
+        case SSTOP:   return 'T';  /* Stopped */
+#endif
+#ifdef SZOMB
+        case SZOMB:   return 'Z';  /* Zombie */
+#endif
+        default:      return '?';
+    }
+}
+
+int probe_processes(process_info_t *procs, int max_procs, int *count) {
+    if (!procs || !count) return -1;
+    
+    *count = 0;
+    
+    char errbuf[_POSIX2_LINE_MAX];
+    kvm_t *kd;
+    
+    /* Open kernel virtual memory interface */
+#if defined(KVM_NO_FILES)
+    kd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, errbuf);
+#else
+    kd = kvm_openfiles(NULL, "/dev/null", NULL, O_RDONLY, errbuf);
+#endif
+    if (kd == NULL) {
+        kd = kvm_openfiles(NULL, "/dev/null", NULL, O_RDONLY, errbuf);
+        if (kd == NULL) {
+            return -1;
+        }
+    }
+    
+    int nprocs;
+    
+#if defined(PLATFORM_FREEBSD)
+    struct kinfo_proc *kp;
+    kp = kvm_getprocs(kd, KERN_PROC_PROC, 0, &nprocs);
+    if (kp == NULL) {
+        kvm_close(kd);
+        return -1;
+    }
+    
+    for (int i = 0; i < nprocs && *count < max_procs; i++) {
+        process_info_t *proc = &procs[*count];
+        memset(proc, 0, sizeof(*proc));
+        
+        proc->pid = kp[i].ki_pid;
+        proc->ppid = kp[i].ki_ppid;
+        safe_strcpy(proc->name, kp[i].ki_comm, sizeof(proc->name));
+        proc->state = bsd_state_to_char(kp[i].ki_stat);
+        proc->rss_bytes = (uint64_t)kp[i].ki_rssize * getpagesize();
+        proc->vsize_bytes = (uint64_t)kp[i].ki_size;
+        proc->thread_count = (uint32_t)kp[i].ki_numthreads;
+        proc->start_time = kp[i].ki_start.tv_sec;
+        proc->age_seconds = (uint64_t)(time(NULL) - proc->start_time);
+        proc->open_fd_count = (uint32_t)count_fds(proc->pid);
+        if (proc->open_fd_count == (uint32_t)-1) proc->open_fd_count = 0;
+        proc->is_potentially_stuck = (proc->state == 'Z') ? 1 : 0;
+        
+        (*count)++;
+    }
+#elif defined(PLATFORM_DRAGONFLY)
+    struct kinfo_proc *kp;
+    kp = kvm_getprocs(kd, KERN_PROC_ALL, 0, &nprocs);
+    if (kp == NULL) {
+        kvm_close(kd);
+        return -1;
+    }
+
+    for (int i = 0; i < nprocs && *count < max_procs; i++) {
+        process_info_t *proc = &procs[*count];
+        memset(proc, 0, sizeof(*proc));
+
+        proc->pid = kp[i].kp_pid;
+        proc->ppid = kp[i].kp_ppid;
+        safe_strcpy(proc->name, kp[i].kp_comm, sizeof(proc->name));
+        proc->state = bsd_state_to_char(kp[i].kp_stat);
+        proc->rss_bytes = (uint64_t)kp[i].kp_vm_rssize * getpagesize();
+        proc->vsize_bytes = 0;
+        proc->thread_count = (uint32_t)kp[i].kp_nthreads;
+        proc->start_time = kp[i].kp_start.tv_sec;
+        proc->age_seconds = (uint64_t)(time(NULL) - proc->start_time);
+        proc->open_fd_count = (uint32_t)count_fds(proc->pid);
+        if (proc->open_fd_count == (uint32_t)-1) proc->open_fd_count = 0;
+        proc->is_potentially_stuck = (proc->state == 'Z') ? 1 : 0;
+
+        (*count)++;
+    }
+
+#elif defined(PLATFORM_NETBSD)
+    struct kinfo_proc2 *kp;
+    kp = kvm_getproc2(kd, KERN_PROC_ALL, 0, sizeof(struct kinfo_proc2), &nprocs);
+    if (kp == NULL) {
+        kvm_close(kd);
+        return -1;
+    }
+    
+    for (int i = 0; i < nprocs && *count < max_procs; i++) {
+        process_info_t *proc = &procs[*count];
+        memset(proc, 0, sizeof(*proc));
+        
+        proc->pid = kp[i].p_pid;
+        proc->ppid = kp[i].p_ppid;
+        safe_strcpy(proc->name, kp[i].p_comm, sizeof(proc->name));
+        proc->state = bsd_state_to_char(kp[i].p_stat);
+        proc->rss_bytes = (uint64_t)kp[i].p_vm_rssize * getpagesize();
+        proc->vsize_bytes = (uint64_t)kp[i].p_vm_vsize;
+        proc->thread_count = (uint32_t)kp[i].p_nlwps;
+        proc->start_time = kp[i].p_ustart_sec;
+        proc->age_seconds = (uint64_t)(time(NULL) - proc->start_time);
+        proc->open_fd_count = (uint32_t)count_fds(proc->pid);
+        if (proc->open_fd_count == (uint32_t)-1) proc->open_fd_count = 0;
+        proc->is_potentially_stuck = (proc->state == 'Z') ? 1 : 0;
+        
+        (*count)++;
+    }
+
+#elif defined(PLATFORM_OPENBSD)
+    struct kinfo_proc *kp;
+    kp = kvm_getprocs(kd, KERN_PROC_ALL, 0, sizeof(struct kinfo_proc), &nprocs);
+    if (kp == NULL) {
+        kvm_close(kd);
+        return -1;
+    }
+    
+    for (int i = 0; i < nprocs && *count < max_procs; i++) {
+        process_info_t *proc = &procs[*count];
+        memset(proc, 0, sizeof(*proc));
+        
+        proc->pid = kp[i].p_pid;
+        proc->ppid = kp[i].p_ppid;
+        safe_strcpy(proc->name, kp[i].p_comm, sizeof(proc->name));
+        proc->state = bsd_state_to_char(kp[i].p_stat);
+        proc->rss_bytes = (uint64_t)kp[i].p_vm_rssize * getpagesize();
+        proc->vsize_bytes = 0;  /* Not available on OpenBSD */
+        proc->thread_count = 1;
+        proc->start_time = kp[i].p_ustart_sec;
+        proc->age_seconds = (uint64_t)(time(NULL) - proc->start_time);
+        proc->open_fd_count = (uint32_t)count_fds(proc->pid);
+        if (proc->open_fd_count == (uint32_t)-1) proc->open_fd_count = 0;
+        proc->is_potentially_stuck = (proc->state == 'Z') ? 1 : 0;
+        
+        (*count)++;
+    }
+#endif
+
+    kvm_close(kd);
+    return 0;
+}
+
+#endif /* PLATFORM_BSD */
 
 /* ============================================================
  * Config File Probing (Portable)

@@ -104,6 +104,48 @@ Forcing all of this into C would mean pulling in `libcurl`, a JSON parsing libra
 - `--audit` flag (requires auditd, no equivalent on macOS)
 - Process state 'D' (uninterruptible sleep doesn't exist on macOS)
 
+## BSD Support (v0.7.0)
+
+**Decision**: Extend platform abstraction to support FreeBSD, OpenBSD, NetBSD, and DragonFlyBSD using libkvm for process enumeration.
+
+**Rationale**:
+1. **Server diversity**: BSD variants are common in firewalls (pfSense/OPNsense), storage (FreeNAS/TrueNAS), and security-focused deployments (OpenBSD).
+2. **Consistent API**: All BSDs provide libkvm for kernel virtual memory access, enabling portable process enumeration.
+3. **Network observability**: BSD's netstat output is similar enough across variants to use a common parser.
+
+**Implementation challenges**:
+
+| Challenge | Solution |
+|-----------|----------|
+| `kinfo_proc` struct differs per BSD | Separate `#elif` blocks with variant-specific field names |
+| `KVM_NO_FILES` not available on FreeBSD | Conditional: `#if defined(KVM_NO_FILES)` with fallback to `O_RDONLY` |
+| `sys/user.h` missing on NetBSD | Wrap include with `#if defined(PLATFORM_FREEBSD) \|\| defined(PLATFORM_OPENBSD) \|\| defined(PLATFORM_DRAGONFLY)` |
+| `KERN_PROC_PROC` FreeBSD-only | Use `KERN_PROC_ALL` on other BSDs |
+| Field prefixes: `ki_*` vs `kp_*` vs `p_*` | FreeBSD uses `ki_`, DragonFlyBSD uses `kp_`, NetBSD/OpenBSD use `p_` |
+
+**API Mapping (extended)**:
+
+| Feature | Linux | macOS | FreeBSD | OpenBSD | NetBSD | DragonFlyBSD |
+|---------|-------|-------|---------|---------|--------|--------------|
+| Memory info | `sysinfo()` | `sysctlbyname()` | `sysctl()` | `sysctl()` | `sysctl()` | `sysctl()` |
+| Process list | `/proc` | `proc_listallpids()` | `kvm_getprocs()` | `kvm_getprocs()` | `kvm_getproc2()` | `kvm_getprocs()` |
+| Process struct | — | — | `kinfo_proc` (ki_*) | `kinfo_proc` (p_*) | `kinfo_proc2` (p_*) | `kinfo_proc` (kp_*) |
+| FD counting | `/proc/[pid]/fd` | `proc_pidinfo()` | `procstat -f` | `fstat -p` | `fstat -p` | `procstat -f` |
+| Network state | `/proc/net/tcp` | `netstat -an` | `netstat -an` | `netstat -an` | `netstat -an` | `netstat -an` |
+
+**What remains Linux-only**:
+- `--audit` flag (auditd is Linux-specific; BSDs use different audit frameworks)
+
+**Testing approach**:
+- Vagrant with libvirt provider for automated VM testing
+- Manual verification on each BSD variant
+- `test-bsd-all.sh` script for CI-ready testing
+
+**Trade-offs accepted**:
+- BSD audit integration deferred (each BSD has different audit mechanisms: BSM on FreeBSD, pledge/unveil on OpenBSD)
+- FD counting uses external tools (`procstat`/`fstat`) rather than direct API—acceptable given low frequency of calls
+- Memory reporting may show higher usage on BSDs due to aggressive filesystem caching (correct behaviour)
+
 ## Auditd Integration (v0.4.0)
 
 **Decision**: Summarise auditd logs rather than forwarding them raw.
