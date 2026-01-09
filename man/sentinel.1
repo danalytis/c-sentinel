@@ -1,0 +1,147 @@
+.TH SENTINEL 1 "2025-01-09" "C-Sentinel 0.6.0" "User Commands"
+.SH NAME
+sentinel \- semantic observability for UNIX systems
+.SH SYNOPSIS
+.B sentinel
+.RB [ \-hqvjwnab ]
+.RB [ \-i
+.IR seconds ]
+.RI [ config_files... ]
+.SH DESCRIPTION
+.B sentinel
+probes system state and configuration, identifying anomalies such as
+zombie processes, unusual network listeners, permission issues, and
+configuration drift.
+Output may be human-readable or JSON.
+.PP
+If no
+.I config_files
+are specified, sentinel probes common system configuration files.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print usage summary and exit.
+.TP
+.BR \-q ", " \-\-quick
+Show quick analysis summary only.
+.TP
+.BR \-v ", " \-\-verbose
+Include all processes, not just notable ones.
+.TP
+.BR \-j ", " \-\-json
+Output JSON to stdout.
+.TP
+.BR \-w ", " \-\-watch
+Continuous monitoring mode.
+.TP
+.BR \-i ", " \-\-interval " " \fIseconds\fR
+Probe interval in watch mode.
+Default: 60.
+.TP
+.BR \-n ", " \-\-network
+Include network probe (listeners, connections).
+.TP
+.BR \-a ", " \-\-audit
+Include auditd security events.
+.TP
+.BR \-b ", " \-\-baseline
+Compare against learned baseline.
+.TP
+.BR \-l ", " \-\-learn
+Learn current state as baseline.
+.TP
+.BR \-c ", " \-\-config
+Show current configuration.
+.TP
+.B \-\-init\-config
+Create default configuration file.
+.TP
+.B \-\-audit\-learn
+Learn audit baseline.
+.TP
+.B \-\-color
+Force coloured output.
+.TP
+.B \-\-no\-color
+Disable coloured output.
+.SH EXIT STATUS
+.TP
+.B 0
+No issues detected.
+.TP
+.B 1
+Warnings (minor issues).
+.TP
+.B 2
+Critical (zombies, permission issues, unusual ports, security events).
+.TP
+.B 3
+Error (probe failed).
+.SH ENVIRONMENT
+.TP
+.B NO_COLOR
+Disable coloured output (standard).
+.SH FILES
+.TP
+.I ~/.sentinel/config
+User configuration file.
+.TP
+.I ~/.sentinel/baseline.json
+Learned baseline state.
+.SH EXAMPLES
+Quick analysis:
+.PP
+.RS
+.nf
+sentinel \-\-quick
+.fi
+.RE
+.PP
+Include network and audit probes:
+.PP
+.RS
+.nf
+sentinel \-\-quick \-\-network \-\-audit
+.fi
+.RE
+.PP
+Learn baseline:
+.PP
+.RS
+.nf
+sentinel \-\-learn \-\-network
+.fi
+.RE
+.PP
+Compare against baseline:
+.PP
+.RS
+.nf
+sentinel \-\-baseline \-\-network
+.fi
+.RE
+.PP
+Save JSON fingerprint:
+.PP
+.RS
+.nf
+sentinel \-\-json > fingerprint.json
+.fi
+.RE
+.PP
+Continuous monitoring:
+.PP
+.RS
+.nf
+sentinel \-\-watch \-\-interval 300
+.fi
+.RE
+.SH SEE ALSO
+.BR auditd (8),
+.BR auditctl (8),
+.BR netstat (8),
+.BR ss (8)
+.SH AUTHORS
+William Murray
+.UR https://github.com/williamofai/c\-sentinel
+.UE
