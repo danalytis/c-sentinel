@@ -27,9 +27,22 @@
 #elif defined(__linux__)
     #define PLATFORM_LINUX 1
     #define PLATFORM_NAME "Linux"
-#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+#elif defined(__FreeBSD__)
     #define PLATFORM_BSD 1
-    #define PLATFORM_NAME "BSD"
+    #define PLATFORM_FREEBSD 1
+    #define PLATFORM_NAME "FreeBSD"
+#elif defined(__NetBSD__)
+    #define PLATFORM_BSD 1
+    #define PLATFORM_NETBSD 1
+    #define PLATFORM_NAME "NetBSD"
+#elif defined(__OpenBSD__)
+    #define PLATFORM_BSD 1
+    #define PLATFORM_OPENBSD 1
+    #define PLATFORM_NAME "OpenBSD"
+#elif defined(__DragonFly__)
+    #define PLATFORM_BSD 1
+    #define PLATFORM_DRAGONFLY 1
+    #define PLATFORM_NAME "DragonFlyBSD"
 #else
     #error "Unsupported platform. C-Sentinel requires Linux, macOS, or BSD."
 #endif
@@ -55,8 +68,24 @@
 
 #ifdef PLATFORM_BSD
     #include <sys/sysctl.h>
+#if defined(PLATFORM_FREEBSD) || defined(PLATFORM_OPENBSD) || defined(PLATFORM_DRAGONFLY)
     #include <sys/user.h>
+#endif
+    #include <sys/param.h>
+    #include <sys/proc.h>
     #include <kvm.h>
+    #include <fcntl.h>
+    #include <limits.h>
+    
+    /* NetBSD/OpenBSD use uvmexp for VM stats */
+    #if defined(PLATFORM_NETBSD) || defined(PLATFORM_OPENBSD)
+        #include <uvm/uvm_extern.h>
+    #endif
+    
+    /* Ensure _POSIX2_LINE_MAX is defined for kvm error buffer */
+    #ifndef _POSIX2_LINE_MAX
+        #define _POSIX2_LINE_MAX 2048
+    #endif
 #endif
 
 /* ============================================================
@@ -66,6 +95,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <time.h>
 #include <stdlib.h>

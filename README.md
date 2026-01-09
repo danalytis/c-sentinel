@@ -499,10 +499,28 @@ make test         # Run basic tests
 make install      # Install to /usr/local/bin
 ```
 
+## Platform Support
+
+| Platform | Build | Process Probe | Network Probe | Audit |
+|----------|-------|---------------|---------------|-------|
+| Linux | ✅ | ✅ /proc | ✅ /proc/net | ✅ auditd |
+| macOS | ✅ | ✅ libproc | ✅ netstat | ❌ N/A |
+| FreeBSD | ✅ | ✅ libkvm | ✅ netstat | ❌ N/A |
+| OpenBSD | ✅ | ✅ libkvm | ✅ netstat | ❌ N/A |
+| NetBSD | ✅ | ✅ libkvm | ✅ netstat | ❌ N/A |
+| DragonFlyBSD | ✅ | ✅ libkvm | ✅ netstat | ❌ N/A |
+
 ### Requirements
+
 - GCC or Clang with C99 support
-- GNU Make
-- Linux (uses `/proc` filesystem) or macOS (10.12+)
+- GNU Make (gmake on BSD)
+- Supported platforms:
+  - Linux (kernel 3.x+)
+  - macOS (10.12+)
+  - FreeBSD (12+)
+  - OpenBSD (7.x)
+  - NetBSD (9.x)
+  - DragonFlyBSD (6.x)
 - auditd (optional, Linux only for `--audit` flag)
 
 ## Project Structure
@@ -550,6 +568,7 @@ c-sentinel/
 - [x] Learning/calibration indicator
 - [x] Email alerts
 - [x] macOS support
+- [x] FreeBSD support (FreeBSD, OpenBSD, NetBSD, DragonFlyBSD)
 - [x] **Multi-user dashboard with roles**
 - [x] **Two-factor authentication (TOTP)**
 - [x] **Personal API keys**
@@ -560,7 +579,6 @@ c-sentinel/
 - [x] **Colour terminal output**
 
 ### Planned 📋
-- [ ] FreeBSD support
 - [ ] Microsoft Teams webhook alerts
 - [ ] Custom alert rules
 - [ ] PDF security reports
