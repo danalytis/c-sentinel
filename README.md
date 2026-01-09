@@ -502,8 +502,8 @@ make install      # Install to /usr/local/bin
 ### Requirements
 - GCC or Clang with C99 support
 - GNU Make
-- Linux (uses `/proc` filesystem)
-- auditd (optional, for `--audit` flag)
+- Linux (uses `/proc` filesystem) or macOS (10.12+)
+- auditd (optional, Linux only for `--audit` flag)
 
 ## Project Structure
 
@@ -549,6 +549,7 @@ c-sentinel/
 - [x] Risk trend sparkline
 - [x] Learning/calibration indicator
 - [x] Email alerts
+- [x] macOS support
 - [x] **Multi-user dashboard with roles**
 - [x] **Two-factor authentication (TOTP)**
 - [x] **Personal API keys**
@@ -559,7 +560,7 @@ c-sentinel/
 - [x] **Colour terminal output**
 
 ### Planned 📋
-- [ ] FreeBSD/macOS support
+- [ ] FreeBSD support
 - [ ] Microsoft Teams webhook alerts
 - [ ] Custom alert rules
 - [ ] PDF security reports

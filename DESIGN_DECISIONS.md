@@ -70,6 +70,40 @@ Forcing all of this into C would mean pulling in `libcurl`, a JSON parsing libra
 
 **Trade-off**: SHA256 is slower than djb2. Acceptable—we're checksumming a handful of config files, not gigabytes of data.
 
+
+## Platform Abstraction (v0.6.0)
+
+**Decision**: Use compile-time conditional compilation (`#ifdef`) rather than runtime detection or separate binaries.
+
+**Rationale**:
+1. **Zero runtime overhead**: No branching or function pointers at runtime. The compiler includes only the relevant code path.
+2. **Single source tree**: Easier to maintain than forked codebases. Changes to shared logic automatically apply to all platforms.
+3. **Type safety**: Platform-specific APIs (e.g., `proc_pidinfo()` on macOS, `sysinfo()` on Linux) have different signatures. Compile-time selection avoids type mismatches.
+4. **Follows C conventions**: This is how portable C programs have been written for decades (see: OpenSSH, nginx, curl).
+
+**Trade-offs accepted**:
+- Must rebuild for each target platform
+- Platform-specific bugs may lurk undetected until someone builds on that platform
+
+**Mitigations**:
+- CI testing on both Linux and macOS
+- Clear `#ifdef PLATFORM_*` blocks with platform noted in comments
+
+**API Mapping**:
+
+| Feature | Linux | macOS |
+|---------|-------|-------|
+| Memory info | `sysinfo()` | `sysctlbyname()` + `host_statistics64()` |
+| Process list | `/proc` scan | `proc_listallpids()` |
+| Process details | `/proc/[pid]/stat` | `proc_pidinfo()` |
+| File descriptors | `/proc/[pid]/fd` count | `proc_pidinfo(PROC_PIDLISTFDS)` |
+| Network state | `/proc/net/tcp` | `netstat -an` parsing |
+| Process attribution | Socket inode matching | `lsof -i` |
+
+**What remains Linux-only**:
+- `--audit` flag (requires auditd, no equivalent on macOS)
+- Process state 'D' (uninterruptible sleep doesn't exist on macOS)
+
 ## Auditd Integration (v0.4.0)
 
 **Decision**: Summarise auditd logs rather than forwarding them raw.
