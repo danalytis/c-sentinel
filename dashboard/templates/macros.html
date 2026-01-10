@@ -1,0 +1,162 @@
+{#
+    C-Sentinel UI Component Macros
+    
+    Import in templates with:
+    {% from "macros.html" import theme_toggle, back_button, risk_badge, ... %}
+#}
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   THEME TOGGLE
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro theme_toggle() %}
+<button class="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark theme">
+    <div class="theme-toggle__track">
+        <svg class="theme-toggle__icon theme-toggle__icon--moon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg class="theme-toggle__icon theme-toggle__icon--sun" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
+            <line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" stroke-width="2"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" stroke-width="2"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2"/>
+            <line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2"/>
+            <line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="2"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" stroke-width="2"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2"/>
+        </svg>
+    </div>
+    <div class="theme-toggle__thumb"></div>
+</button>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   BACK BUTTON
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro back_button(url='/') %}
+<a href="{{ url }}" class="nav-link" style="padding: 0.5rem; margin-right: 0.5rem;">
+    <i data-lucide="arrow-left"></i>
+</a>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   RISK BADGE (inline)
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro risk_badge(level, score) %}
+<div class="risk-badge risk-badge--{{ level|lower }}">
+    <i data-lucide="shield"></i>
+    <span>Risk: {{ level|upper }}</span>
+    <span class="risk-badge__score">{{ score }}</span>
+</div>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   RISK BANNER (full-width for cards)
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro risk_banner(level, score) %}
+<div class="risk-banner risk-badge--{{ level|lower }}">
+    <span class="flex items-center gap-2">
+        <i data-lucide="shield"></i>
+        Risk: {{ level|upper }}
+    </span>
+    <span class="font-mono font-bold">{{ score }}</span>
+</div>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   STATUS DOT
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro status_dot(status) %}
+<span class="status-dot status-dot--{{ status }}"></span>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   ALERT MESSAGE
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro alert(message, type='info') %}
+<div class="alert alert--{{ type }}">
+    {% if type == 'success' %}
+    <i data-lucide="check-circle"></i>
+    {% elif type == 'warning' %}
+    <i data-lucide="alert-triangle"></i>
+    {% elif type == 'danger' %}
+    <i data-lucide="alert-circle"></i>
+    {% else %}
+    <i data-lucide="info"></i>
+    {% endif %}
+    <span>{{ message }}</span>
+</div>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   STAT CARD
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro stat_card(label, value='-', id=none, modifier='') %}
+<div class="stat-card">
+    <div class="stat-card__label">{{ label }}</div>
+    <div class="stat-card__value {{ modifier }}" {% if id %}id="{{ id }}"{% endif %}>{{ value }}</div>
+</div>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   ROLE BADGE
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro role_badge(role) %}
+<span class="badge badge--{{ role }}">{{ role }}</span>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   EMPTY STATE
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro empty_state(icon, title, description='') %}
+<div class="empty-state">
+    <i data-lucide="{{ icon }}" class="empty-state__icon"></i>
+    <h3 class="empty-state__title">{{ title }}</h3>
+    {% if description %}
+    <p class="empty-state__description">{{ description }}</p>
+    {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   FORM INPUT
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro form_input(name, label, type='text', placeholder='', required=false, value='', autocomplete='', class='') %}
+<div class="form-group">
+    <label for="{{ name }}" class="form-label">{{ label }}</label>
+    <input 
+        type="{{ type }}" 
+        id="{{ name }}" 
+        name="{{ name }}" 
+        class="form-input {{ class }}"
+        placeholder="{{ placeholder }}"
+        {% if required %}required{% endif %}
+        {% if value %}value="{{ value }}"{% endif %}
+        {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
+    >
+</div>
+{% endmacro %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   BUTTON
+   ═══════════════════════════════════════════════════════════════════════════ #}
+{% macro button(text, type='button', variant='primary', icon='', size='', disabled=false) %}
+<button 
+    type="{{ type }}" 
+    class="btn btn--{{ variant }} {% if size %}btn--{{ size }}{% endif %}"
+    {% if disabled %}disabled{% endif %}
+>
+    {% if icon %}<i data-lucide="{{ icon }}"></i>{% endif %}
+    <span>{{ text }}</span>
+</button>
+{% endmacro %}
