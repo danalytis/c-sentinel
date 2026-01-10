@@ -45,6 +45,12 @@ echo -e "${YELLOW}Installing binary...${NC}"
 cp bin/sentinel /usr/local/bin/sentinel
 chmod 755 /usr/local/bin/sentinel
 
+# Install manpage
+echo -e "${YELLOW}Installing manpage...${NC}"
+install -d /usr/local/share/man/man1
+install -m 644 man/sentinel.1 /usr/local/share/man/man1/
+mandb 2>/dev/null || true  # Update man database (optional, may fail)
+
 # Install config file template
 if [ ! -f /etc/sentinel/config ]; then
     echo -e "${YELLOW}Installing default config...${NC}"
