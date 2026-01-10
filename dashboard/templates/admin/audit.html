@@ -2,152 +2,255 @@
 
 {% block title %}Audit Log - C-Sentinel{% endblock %}
 
-{% block header %}
-<header class="bg-gray-800 border-b border-gray-700">
-    <div class="max-w-7xl mx-auto px-4 py-4">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-4">
-                <a href="/" class="text-gray-400 hover:text-white">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                </a>
-                <a href="/" class="flex items-center space-x-3">
-                    <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
-                        <i data-lucide="scroll-text" class="w-6 h-6"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-xl font-bold">Audit Log</h1>
-                        <p class="text-xs text-gray-400 hide-mobile">Track all user actions</p>
-                    </div>
-                </a>
-            </div>
-            
-            <!-- Desktop Navigation -->
-            <div class="hide-mobile flex items-center space-x-4" data-desktop-nav>
-                <a href="/admin/users" class="text-gray-400 hover:text-white flex items-center text-sm">
-                    <i data-lucide="users" class="w-4 h-4 mr-1"></i>
-                    Users
-                </a>
-                <a href="/admin/sessions" class="text-gray-400 hover:text-white flex items-center text-sm">
-                    <i data-lucide="monitor-smartphone" class="w-4 h-4 mr-1"></i>
-                    Sessions
-                </a>
-                <a href="/profile" class="text-gray-400 hover:text-white flex items-center text-sm">
-                    <i data-lucide="user" class="w-4 h-4 mr-1"></i>
-                    {{ session.username }}
-                </a>
-                <a href="/logout" class="text-gray-400 hover:text-white flex items-center text-sm">
-                    <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
-                    Logout
-                </a>
-            </div>
-            
-            <!-- Mobile Burger -->
-            <button onclick="openMobileMenu()" class="show-mobile p-2 text-gray-400 hover:text-white">
-                <i data-lucide="menu" class="w-6 h-6"></i>
-            </button>
-        </div>
-    </div>
-</header>
+{% block header_back %}
+{{ back_button('/') }}
+{% endblock %}
+
+{% block header_icon_block %}<i data-lucide="scroll-text"></i>{% endblock %}
+{% block header_title %}Audit Log{% endblock %}
+{% block header_subtitle %}Track all user actions{% endblock %}
+
+{% block nav_items %}
+<a href="/admin/users" class="nav-link">
+    <i data-lucide="users"></i>
+    <span>Users</span>
+</a>
+<a href="/admin/sessions" class="nav-link">
+    <i data-lucide="monitor-smartphone"></i>
+    <span>Sessions</span>
+</a>
+<a href="/profile" class="nav-link">
+    <i data-lucide="user"></i>
+    <span>{{ session.username }}</span>
+</a>
+<a href="/logout" class="nav-link">
+    <i data-lucide="log-out"></i>
+    <span>Logout</span>
+</a>
 {% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto px-4 py-8">
-    <!-- Filters -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700 p-4 mb-6">
-        <div class="grid grid-cols-2 md:flex md:flex-wrap gap-4 items-end">
-            <div>
-                <label class="block text-xs text-gray-400 mb-1">Action Type</label>
-                <select id="filter-action" onchange="loadAuditLog()" class="px-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm focus:outline-none focus:border-emerald-500">
+<style>
+    .audit-filters {
+        display: flex;
+        align-items: flex-end;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid var(--border-default);
+    }
+    .audit-filters .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+    .audit-filters .filter-group label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .audit-filters .filter-group select {
+        min-width: 160px;
+    }
+    .audit-filters .entry-count {
+        margin-left: auto;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+    }
+    
+    .action-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.25rem 0.625rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    .action-badge__dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    
+    /* Action badge colours */
+    .action-badge--login { background: #14532d; color: #4ade80; }
+    .action-badge--login .action-badge__dot { background: #4ade80; }
+    
+    .action-badge--logout { background: #14532d; color: #4ade80; }
+    .action-badge--logout .action-badge__dot { background: #4ade80; }
+    
+    .action-badge--login_failed { background: #7f1d1d; color: #f87171; }
+    .action-badge--login_failed .action-badge__dot { background: #f87171; }
+    
+    .action-badge--create_user { background: #7c2d12; color: #fb923c; }
+    .action-badge--create_user .action-badge__dot { background: #fb923c; }
+    
+    .action-badge--update_user { background: #7c2d12; color: #fb923c; }
+    .action-badge--update_user .action-badge__dot { background: #fb923c; }
+    
+    .action-badge--delete_user { background: #7f1d1d; color: #f87171; }
+    .action-badge--delete_user .action-badge__dot { background: #f87171; }
+    
+    .action-badge--2fa_enabled { background: #1e3a5f; color: #93c5fd; }
+    .action-badge--2fa_enabled .action-badge__dot { background: #93c5fd; }
+    
+    .action-badge--2fa_disabled { background: #1e3a5f; color: #93c5fd; }
+    .action-badge--2fa_disabled .action-badge__dot { background: #93c5fd; }
+    
+    .action-badge--create_api_key { background: #374151; color: #9ca3af; }
+    .action-badge--create_api_key .action-badge__dot { background: #9ca3af; }
+    
+    .action-badge--delete_api_key { background: #374151; color: #9ca3af; }
+    .action-badge--delete_api_key .action-badge__dot { background: #9ca3af; }
+    
+    .action-badge--password_changed { background: #1e3a5f; color: #93c5fd; }
+    .action-badge--password_changed .action-badge__dot { background: #93c5fd; }
+    
+    .action-badge--revoke_session { background: #1e3a5f; color: #93c5fd; }
+    .action-badge--revoke_session .action-badge__dot { background: #93c5fd; }
+    
+    .action-badge--default { background: #374151; color: #9ca3af; }
+    .action-badge--default .action-badge__dot { background: #9ca3af; }
+    
+    .audit-table td {
+        padding: 0.875rem 1rem;
+        vertical-align: middle;
+    }
+    .audit-table th {
+        padding: 0.75rem 1rem;
+        text-transform: uppercase;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+    }
+    
+    .legend {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+        padding-top: 1rem;
+        margin-top: 1rem;
+        border-top: 1px solid var(--border-default);
+    }
+    .legend-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+    }
+    .legend-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+</style>
+
+<div class="card">
+    <div class="card__body">
+        {# Filters Row #}
+        <div class="audit-filters">
+            <div class="filter-group">
+                <label>Action Type</label>
+                <select id="action-filter" class="form-input form-select" onchange="loadAuditLog()">
                     <option value="">All Actions</option>
                     <option value="login">Login</option>
                     <option value="logout">Logout</option>
                     <option value="login_failed">Failed Login</option>
+                    <option value="password_changed">Password Changed</option>
+                    <option value="2fa_enabled">2FA Enabled</option>
+                    <option value="2fa_disabled">2FA Disabled</option>
                     <option value="create_user">Create User</option>
                     <option value="update_user">Update User</option>
                     <option value="delete_user">Delete User</option>
-                    <option value="password_changed">Password Changed</option>
-                    <option value="acknowledge_events">Acknowledge Events</option>
-                    <option value="reset_audit">Reset Counters</option>
+                    <option value="create_api_key">Create API Key</option>
+                    <option value="delete_api_key">Delete API Key</option>
                 </select>
             </div>
-            <div>
-                <label class="block text-xs text-gray-400 mb-1">User</label>
-                <select id="filter-user" onchange="loadAuditLog()" class="px-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm focus:outline-none focus:border-emerald-500">
+            <div class="filter-group">
+                <label>User</label>
+                <select id="user-filter" class="form-input form-select" onchange="loadAuditLog()">
                     <option value="">All Users</option>
                 </select>
             </div>
-            <div>
-                <label class="block text-xs text-gray-400 mb-1">Time Range</label>
-                <select id="filter-time" onchange="loadAuditLog()" class="px-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm focus:outline-none focus:border-emerald-500">
+            <div class="filter-group">
+                <label>Time Range</label>
+                <select id="time-filter" class="form-input form-select" onchange="loadAuditLog()">
                     <option value="24h">Last 24 hours</option>
                     <option value="7d">Last 7 days</option>
                     <option value="30d">Last 30 days</option>
                     <option value="all">All time</option>
                 </select>
             </div>
-            <div class="flex-1"></div>
-            <div class="text-sm text-gray-400">
-                <span id="result-count">-</span> entries
+            <div class="entry-count">
+                <span id="entry-count">-</span> entries
             </div>
         </div>
-    </div>
-    
-    <!-- Audit Log Table -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-        <div class="table-responsive">
-            <table class="w-full">
-                <thead class="bg-gray-900">
+        
+        {# Audit Log Table #}
+        <div class="table-wrapper">
+            <table class="table audit-table">
+                <thead>
                     <tr>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Timestamp</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">User</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Action</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase hidden md:table-cell">Details</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase hidden md:table-cell">IP Address</th>
+                        <th style="width: 170px;">Timestamp</th>
+                        <th style="width: 100px;">User</th>
+                        <th style="width: 130px;">Action</th>
+                        <th>Details</th>
+                        <th style="width: 130px; text-align: right;">IP Address</th>
                     </tr>
                 </thead>
-                <tbody id="audit-log-table">
+                <tbody id="audit-body">
                     <tr>
-                        <td colspan="5" class="px-4 py-8 text-center text-gray-500">
-                            <i data-lucide="loader-2" class="w-6 h-6 mx-auto mb-2 animate-spin"></i>
-                            Loading audit log...
+                        <td colspan="5" class="text-center py-8">
+                            <div class="spinner" style="margin: 0 auto;"></div>
                         </td>
                     </tr>
                 </tbody>
             </table>
         </div>
-    </div>
-    
-    <!-- Pagination -->
-    <div class="flex justify-between items-center mt-4">
-        <button id="btn-prev" onclick="prevPage()" disabled class="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm">
-            <i data-lucide="chevron-left" class="w-4 h-4 inline"></i> <span class="hide-mobile">Previous</span>
-        </button>
-        <span id="page-info" class="text-sm text-gray-400">Page 1</span>
-        <button id="btn-next" onclick="nextPage()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm">
-            <span class="hide-mobile">Next</span> <i data-lucide="chevron-right" class="w-4 h-4 inline"></i>
-        </button>
-    </div>
-    
-    <!-- Action Legend -->
-    <div class="mt-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
-        <h3 class="text-sm font-semibold mb-3">Action Types</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-            <div class="flex items-center">
-                <span class="w-3 h-3 rounded-full bg-emerald-500 mr-2"></span>
-                <span class="text-gray-400">Login/Logout</span>
-            </div>
-            <div class="flex items-center">
-                <span class="w-3 h-3 rounded-full bg-red-500 mr-2"></span>
-                <span class="text-gray-400">Failed Login</span>
-            </div>
-            <div class="flex items-center">
-                <span class="w-3 h-3 rounded-full bg-purple-500 mr-2"></span>
-                <span class="text-gray-400">User Management</span>
-            </div>
-            <div class="flex items-center">
-                <span class="w-3 h-3 rounded-full bg-blue-500 mr-2"></span>
-                <span class="text-gray-400">Security Actions</span>
-            </div>
+        
+        {# Pagination #}
+        <div class="flex items-center justify-between mt-4">
+            <button onclick="loadPage(currentPage - 1)" class="btn btn--secondary btn--sm" id="prev-btn" disabled>
+                <i data-lucide="chevron-left"></i>
+                <span>Previous</span>
+            </button>
+            <span class="text-sm text-muted" id="page-info">Page 1 of 1</span>
+            <button onclick="loadPage(currentPage + 1)" class="btn btn--secondary btn--sm" id="next-btn">
+                <span>Next</span>
+                <i data-lucide="chevron-right"></i>
+            </button>
+        </div>
+        
+        {# Action Types Legend #}
+        <div class="legend">
+            <span class="legend-title">Action Types</span>
+            <span class="legend-item">
+                <span class="legend-dot" style="background: #4ade80;"></span>
+                Login/Logout
+            </span>
+            <span class="legend-item">
+                <span class="legend-dot" style="background: #f87171;"></span>
+                Failed Login
+            </span>
+            <span class="legend-item">
+                <span class="legend-dot" style="background: #fb923c;"></span>
+                User Management
+            </span>
+            <span class="legend-item">
+                <span class="legend-dot" style="background: #93c5fd;"></span>
+                Security Actions
+            </span>
         </div>
     </div>
 </div>
@@ -157,52 +260,135 @@
 <script>
     let currentPage = 1;
     const pageSize = 50;
-    let totalEntries = 0;
     
-    // Load on page load
-    loadUsers();
-    loadAuditLog();
+    // Action badge HTML
+    function getActionBadge(action) {
+        const labels = {
+            'login': 'Login',
+            'logout': 'Logout',
+            'login_failed': 'Failed Login',
+            'password_changed': 'Password Changed',
+            '2fa_enabled': '2fa_enabled',
+            '2fa_disabled': '2fa_disabled',
+            'create_user': 'Create User',
+            'update_user': 'Update User',
+            'delete_user': 'Delete User',
+            'create_api_key': 'create_api_key',
+            'delete_api_key': 'delete_api_key',
+            'revoke_session': 'Revoke Session',
+        };
+        
+        const label = labels[action] || action;
+        const className = labels[action] ? action : 'default';
+        
+        return `<span class="action-badge action-badge--${className}">
+            <span class="action-badge__dot"></span>
+            ${label}
+        </span>`;
+    }
+    
+    function formatDetails(details) {
+        if (!details) return '-';
+        if (typeof details === 'string') {
+            try {
+                details = JSON.parse(details);
+            } catch {
+                return details;
+            }
+        }
+        
+        const parts = [];
+        if (details.ip) parts.push(`from ${details.ip}`);
+        if (details['2fa'] !== undefined) parts.push(`2fa: ${details['2fa']}`);
+        if (details.new_user) parts.push(`Created user "${details.new_user}" with role ${details.role}`);
+        if (details.target_user !== undefined) {
+            let changes = details.changes || details.field || '';
+            if (details.active !== undefined) changes = `active: ${details.active}`;
+            parts.push(`Updated user #${details.target_user}${changes ? ': ' + changes : ''}`);
+        }
+        if (details.disabled_user) parts.push(`Disabled user "${details.disabled_user}"`);
+        if (details.username && !details.new_user && !details.ip) parts.push(`Attempted username: ${details.username}`);
+        if (details.key_prefix) {
+            let keyInfo = `{"key_prefix":"${details.key_prefix}"`;
+            if (details.name) keyInfo += `,"name":"${details.name}"`;
+            keyInfo += '}';
+            parts.push(keyInfo);
+        }
+        
+        if (parts.length === 0) {
+            // Fallback: show raw JSON nicely
+            const str = JSON.stringify(details);
+            if (str === '{}' || str === 'null') return '-';
+            return str.replace(/[{}"]/g, '').replace(/,/g, ', ').replace(/:/g, ': ');
+        }
+        
+        return parts.join(', ');
+    }
+    
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const mins = String(date.getMinutes()).padStart(2, '0');
+        const secs = String(date.getSeconds()).padStart(2, '0');
+        return `${day}/${month}/${year},&nbsp;${hours}:${mins}:${secs}`;
+    }
     
     async function loadUsers() {
         try {
-            const response = await fetch('/api/users');
-            if (response.ok) {
-                const users = await response.json();
-                const select = document.getElementById('filter-user');
-                users.forEach(user => {
-                    const option = document.createElement('option');
-                    option.value = user.id;
-                    option.textContent = user.username;
-                    select.appendChild(option);
-                });
-            }
+            const users = await api('/api/users');
+            if (!users) return;
+            
+            const select = document.getElementById('user-filter');
+            users.forEach(u => {
+                const option = document.createElement('option');
+                option.value = u.id;
+                option.textContent = u.username;
+                select.appendChild(option);
+            });
         } catch (error) {
             console.error('Failed to load users:', error);
         }
     }
     
     async function loadAuditLog() {
-        const action = document.getElementById('filter-action').value;
-        const userId = document.getElementById('filter-user').value;
-        const timeRange = document.getElementById('filter-time').value;
+        currentPage = 1;
+        await loadPage(1);
+    }
+    
+    async function loadPage(page) {
+        if (page < 1) return;
         
-        let url = `/api/admin/audit-log?page=${currentPage}&limit=${pageSize}`;
-        if (action) url += `&action=${action}`;
-        if (userId) url += `&user_id=${userId}`;
-        if (timeRange) url += `&time_range=${timeRange}`;
+        const actionFilter = document.getElementById('action-filter').value;
+        const userFilter = document.getElementById('user-filter').value;
+        const timeRange = document.getElementById('time-filter').value;
         
         try {
-            const response = await fetch(url);
-            if (response.status === 401) {
-                window.location.href = '/login';
-                return;
-            }
-            if (response.status === 403) {
-                document.getElementById('audit-log-table').innerHTML = `
+            let url = `/api/admin/audit-log?page=${page}&limit=${pageSize}&time_range=${timeRange}`;
+            if (actionFilter) url += `&action=${actionFilter}`;
+            if (userFilter) url += `&user_id=${userFilter}`;
+            
+            const data = await api(url);
+            if (!data) return;
+            
+            const entries = data.entries || [];
+            const total = data.total || entries.length;
+            const tbody = document.getElementById('audit-body');
+            
+            document.getElementById('entry-count').textContent = total;
+            
+            if (entries.length === 0) {
+                tbody.innerHTML = `
                     <tr>
-                        <td colspan="5" class="px-4 py-8 text-center text-red-400">
-                            <i data-lucide="shield-x" class="w-8 h-8 mx-auto mb-2"></i>
-                            Access denied. Admin role required.
+                        <td colspan="5">
+                            <div class="empty-state">
+                                <i data-lucide="scroll-text" class="empty-state__icon"></i>
+                                <h3 class="empty-state__title">No audit entries</h3>
+                                <p class="empty-state__description">No matching entries found</p>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -210,122 +396,33 @@
                 return;
             }
             
-            const data = await response.json();
-            totalEntries = data.total;
-            renderAuditLog(data.entries);
-            updatePagination();
+            tbody.innerHTML = entries.map(entry => `
+                <tr>
+                    <td class="text-muted font-mono" style="font-size: 0.8125rem; white-space: nowrap;">${formatDate(entry.created_at)}</td>
+                    <td class="font-semibold">${entry.username || '-'}</td>
+                    <td>${getActionBadge(entry.action)}</td>
+                    <td class="text-muted" style="font-size: 0.8125rem;">${formatDetails(entry.details)}</td>
+                    <td class="text-right font-mono" style="font-size: 0.8125rem;">${entry.ip_address || '-'}</td>
+                </tr>
+            `).join('');
+            
+            currentPage = page;
+            const totalPages = Math.ceil(total / pageSize) || 1;
+            
+            document.getElementById('prev-btn').disabled = page <= 1;
+            document.getElementById('next-btn').disabled = page >= totalPages;
+            document.getElementById('page-info').textContent = `Page ${page} of ${totalPages}`;
+            
+            lucide.createIcons();
             
         } catch (error) {
             console.error('Failed to load audit log:', error);
+            Toast.error('Failed to load audit log');
         }
     }
     
-    function renderAuditLog(entries) {
-        const tbody = document.getElementById('audit-log-table');
-        document.getElementById('result-count').textContent = totalEntries;
-        
-        if (entries.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="5" class="px-4 py-8 text-center text-gray-500">
-                        No audit entries found for the selected filters.
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-        
-        tbody.innerHTML = entries.map(entry => {
-            const actionInfo = getActionInfo(entry.action);
-            const timestamp = new Date(entry.created_at).toLocaleString();
-            const details = formatDetails(entry.action, entry.details);
-            
-            return `
-                <tr class="border-t border-gray-700 hover:bg-gray-700/50">
-                    <td class="px-4 py-3 text-sm text-gray-400">${timestamp}</td>
-                    <td class="px-4 py-3">
-                        <span class="font-medium">${entry.username || '<system>'}</span>
-                    </td>
-                    <td class="px-4 py-3">
-                        <span class="inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${actionInfo.class}">
-                            <span class="w-2 h-2 rounded-full ${actionInfo.dot} mr-2"></span>
-                            ${actionInfo.label}
-                        </span>
-                    </td>
-                    <td class="px-4 py-3 text-sm text-gray-400 hidden md:table-cell">${details}</td>
-                    <td class="px-4 py-3 text-sm text-gray-500 font-mono hidden md:table-cell">${entry.ip_address || '-'}</td>
-                </tr>
-            `;
-        }).join('');
-        
-        lucide.createIcons();
-    }
-    
-    function getActionInfo(action) {
-        const actions = {
-            'login': { label: 'Login', class: 'bg-emerald-900/50 text-emerald-300', dot: 'bg-emerald-500' },
-            'logout': { label: 'Logout', class: 'bg-emerald-900/50 text-emerald-300', dot: 'bg-emerald-500' },
-            'login_failed': { label: 'Failed Login', class: 'bg-red-900/50 text-red-300', dot: 'bg-red-500' },
-            'create_user': { label: 'Create User', class: 'bg-purple-900/50 text-purple-300', dot: 'bg-purple-500' },
-            'update_user': { label: 'Update User', class: 'bg-purple-900/50 text-purple-300', dot: 'bg-purple-500' },
-            'delete_user': { label: 'Delete User', class: 'bg-purple-900/50 text-purple-300', dot: 'bg-purple-500' },
-            'password_changed': { label: 'Password Changed', class: 'bg-yellow-900/50 text-yellow-300', dot: 'bg-yellow-500' },
-            'acknowledge_events': { label: 'Acknowledge', class: 'bg-blue-900/50 text-blue-300', dot: 'bg-blue-500' },
-            'reset_audit': { label: 'Reset Counters', class: 'bg-blue-900/50 text-blue-300', dot: 'bg-blue-500' }
-        };
-        return actions[action] || { label: action, class: 'bg-gray-700 text-gray-300', dot: 'bg-gray-500' };
-    }
-    
-    function formatDetails(action, details) {
-        if (!details) return '-';
-        
-        try {
-            const d = typeof details === 'string' ? JSON.parse(details) : details;
-            
-            switch (action) {
-                case 'login_failed':
-                    return `Attempted username: ${d.username || 'unknown'}`;
-                case 'create_user':
-                    return `Created user "${d.new_user}" with role ${d.role}`;
-                case 'update_user':
-                    return `Updated user #${d.target_user_id}: ${(d.updates || []).join(', ')}`;
-                case 'delete_user':
-                    return `Disabled user "${d.target_user}"`;
-                case 'acknowledge_events':
-                    return `${d.hostname}: ${d.count} event(s)`;
-                case 'reset_audit':
-                    return `${d.hostname}: ${d.events_acknowledged} event(s) acknowledged`;
-                case 'login':
-                case 'logout':
-                    return d.ip ? `from ${d.ip}` : '-';
-                default:
-                    return JSON.stringify(d);
-            }
-        } catch {
-            return String(details);
-        }
-    }
-    
-    function updatePagination() {
-        const totalPages = Math.ceil(totalEntries / pageSize);
-        document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages || 1}`;
-        document.getElementById('btn-prev').disabled = currentPage <= 1;
-        document.getElementById('btn-next').disabled = currentPage >= totalPages;
-    }
-    
-    function prevPage() {
-        if (currentPage > 1) {
-            currentPage--;
-            loadAuditLog();
-        }
-    }
-    
-    function nextPage() {
-        const totalPages = Math.ceil(totalEntries / pageSize);
-        if (currentPage < totalPages) {
-            currentPage++;
-            loadAuditLog();
-        }
-    }
+    // Initial load
+    loadUsers();
+    loadAuditLog();
 </script>
 {% endblock %}

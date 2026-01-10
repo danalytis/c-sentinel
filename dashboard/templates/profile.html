@@ -2,203 +2,163 @@
 
 {% block title %}Profile - C-Sentinel{% endblock %}
 
-{% block header %}
-<header class="bg-gray-800 border-b border-gray-700">
-    <div class="max-w-7xl mx-auto px-4 py-4">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-4">
-                <a href="/" class="text-gray-400 hover:text-white">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                </a>
-                <a href="/" class="flex items-center space-x-3">
-                    <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
-                        <i data-lucide="user-circle" class="w-6 h-6"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-xl font-bold">My Profile</h1>
-                        <p class="text-xs text-gray-400 hide-mobile">Manage your account settings</p>
-                    </div>
-                </a>
-            </div>
-            
-            <!-- Desktop Navigation -->
-            <div class="hide-mobile flex items-center space-x-4" data-desktop-nav>
-                {% if session.role == 'admin' %}
-                <a href="/admin/users" class="text-gray-400 hover:text-white flex items-center text-sm">
-                    <i data-lucide="users" class="w-4 h-4 mr-1"></i>
-                    Users
-                </a>
-                {% endif %}
-                <a href="/logout" class="text-gray-400 hover:text-white flex items-center text-sm">
-                    <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
-                    Logout
-                </a>
-            </div>
-            
-            <!-- Mobile Burger -->
-            <button onclick="openMobileMenu()" class="show-mobile p-2 text-gray-400 hover:text-white">
-                <i data-lucide="menu" class="w-6 h-6"></i>
-            </button>
-        </div>
-    </div>
-</header>
+{% block header_back %}
+{{ back_button('/') }}
 {% endblock %}
 
+{% set header_icon = 'user-circle' %}
+{% block header_title %}My Profile{% endblock %}
+{% block header_subtitle %}Manage your account settings{% endblock %}
+
 {% block content %}
-<div class="max-w-2xl mx-auto px-4 py-8">
-    <!-- Profile Info Card -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6">
-        <h2 class="text-lg font-semibold mb-4">Account Information</h2>
-        
-        <div class="space-y-4">
-            <div class="flex justify-between items-center py-2 border-b border-gray-700">
-                <span class="text-gray-400">Username</span>
-                <span class="font-medium">{{ user.username }}</span>
-            </div>
-            <div class="flex justify-between items-center py-2 border-b border-gray-700">
-                <span class="text-gray-400">Email</span>
-                <span class="font-medium">{{ user.email or '-' }}</span>
-            </div>
-            <div class="flex justify-between items-center py-2 border-b border-gray-700">
-                <span class="text-gray-400">Role</span>
-                <span class="px-2 py-1 rounded text-xs font-semibold 
-                    {% if user.role == 'admin' %}bg-purple-900/50 text-purple-300
-                    {% elif user.role == 'operator' %}bg-blue-900/50 text-blue-300
-                    {% else %}bg-gray-700 text-gray-300{% endif %}">
-                    {{ user.role }}
-                </span>
-            </div>
-            <div class="flex justify-between items-center py-2 border-b border-gray-700">
-                <span class="text-gray-400">Member since</span>
-                <span class="font-medium">{{ user.created_at.strftime('%d %B %Y') if user.created_at else '-' }}</span>
-            </div>
-            <div class="flex justify-between items-center py-2">
-                <span class="text-gray-400">Last login</span>
-                <span class="font-medium">{{ user.last_login.strftime('%d %B %Y, %H:%M') if user.last_login else 'Never' }}</span>
+<div class="max-w-2xl" style="margin: 0 auto;">
+    {# ═══════════════════════════════════════════════════════════════════════
+       ACCOUNT INFORMATION
+       ═══════════════════════════════════════════════════════════════════════ #}
+    <div class="card mb-6">
+        <div class="card__header">
+            <h2 class="card__title">Account Information</h2>
+        </div>
+        <div class="card__body" style="padding: 0;">
+            <table class="w-full">
+                <tr class="border-b" style="border-color: var(--border-subtle);">
+                    <td class="text-muted py-3 px-4" style="width: 40%;">Username</td>
+                    <td class="py-3 px-4 font-semibold">{{ user.username }}</td>
+                </tr>
+                <tr class="border-b" style="border-color: var(--border-subtle);">
+                    <td class="text-muted py-3 px-4">Email</td>
+                    <td class="py-3 px-4">{{ user.email or '-' }}</td>
+                </tr>
+                <tr class="border-b" style="border-color: var(--border-subtle);">
+                    <td class="text-muted py-3 px-4">Role</td>
+                    <td class="py-3 px-4">{{ role_badge(user.role) }}</td>
+                </tr>
+                <tr class="border-b" style="border-color: var(--border-subtle);">
+                    <td class="text-muted py-3 px-4">Member since</td>
+                    <td class="py-3 px-4">{{ user.created_at.strftime('%d %B %Y') if user.created_at else '-' }}</td>
+                </tr>
+                <tr>
+                    <td class="text-muted py-3 px-4">Last login</td>
+                    <td class="py-3 px-4">{{ user.last_login.strftime('%d %B %Y, %H:%M') if user.last_login else 'Never' }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    
+    {# ═══════════════════════════════════════════════════════════════════════
+       TWO-FACTOR AUTHENTICATION
+       ═══════════════════════════════════════════════════════════════════════ #}
+    <div class="card mb-6">
+        <div class="card__body">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    {% if user.totp_enabled %}
+                    <div style="width: 40px; height: 40px; background: var(--color-success-muted); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                        <i data-lucide="shield-check" style="width: 20px; height: 20px; color: var(--color-success);"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold">Two-Factor Authentication</h3>
+                        <p class="text-sm text-success mt-1">Enabled — Your account is protected</p>
+                    </div>
+                    {% else %}
+                    <div style="width: 40px; height: 40px; background: var(--color-warning-muted); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                        <i data-lucide="shield-off" style="width: 20px; height: 20px; color: var(--color-warning);"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold">Two-Factor Authentication</h3>
+                        <p class="text-sm text-warning mt-1">Not enabled — Add extra security</p>
+                    </div>
+                    {% endif %}
+                </div>
+                <a href="/profile/2fa" class="btn btn--secondary btn--sm">
+                    <i data-lucide="settings"></i>
+                    <span>Configure</span>
+                </a>
             </div>
         </div>
     </div>
     
-    <!-- Two-Factor Authentication Card -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center">
-                {% if user.totp_enabled %}
-                <div class="w-10 h-10 bg-emerald-900/50 rounded-full flex items-center justify-center mr-4">
-                    <i data-lucide="shield-check" class="w-5 h-5 text-emerald-400"></i>
-                </div>
+    {# ═══════════════════════════════════════════════════════════════════════
+       API KEYS
+       ═══════════════════════════════════════════════════════════════════════ #}
+    <div class="card mb-6">
+        <div class="card__body">
+            <div class="flex items-center justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold">Two-Factor Authentication</h2>
-                    <p class="text-sm text-emerald-400 mt-1">Enabled - Your account is protected</p>
+                    <h3 class="font-semibold">API Keys</h3>
+                    <p class="text-sm text-muted mt-1">Manage personal API keys for automation</p>
                 </div>
-                {% else %}
-                <div class="w-10 h-10 bg-yellow-900/50 rounded-full flex items-center justify-center mr-4">
-                    <i data-lucide="shield-off" class="w-5 h-5 text-yellow-400"></i>
-                </div>
-                <div>
-                    <h2 class="text-lg font-semibold">Two-Factor Authentication</h2>
-                    <p class="text-sm text-yellow-400 mt-1">Not enabled - Add extra security</p>
-                </div>
-                {% endif %}
+                <a href="/profile/api-keys" class="btn btn--secondary btn--sm">
+                    <i data-lucide="key"></i>
+                    <span>Manage Keys</span>
+                </a>
             </div>
-            <a href="/profile/2fa" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg flex items-center text-sm transition-colors">
-                <i data-lucide="settings" class="w-4 h-4 mr-2"></i>
-                Configure
-            </a>
         </div>
     </div>
     
-    <!-- API Keys Card -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6">
-        <div class="flex items-center justify-between">
-            <div>
-                <h2 class="text-lg font-semibold">API Keys</h2>
-                <p class="text-sm text-gray-400 mt-1">Manage personal API keys for automation</p>
-            </div>
-            <a href="/profile/api-keys" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg flex items-center text-sm transition-colors">
-                <i data-lucide="key" class="w-4 h-4 mr-2"></i>
-                Manage Keys
-            </a>
+    {# ═══════════════════════════════════════════════════════════════════════
+       CHANGE PASSWORD
+       ═══════════════════════════════════════════════════════════════════════ #}
+    <div class="card">
+        <div class="card__header">
+            <h2 class="card__title">Change Password</h2>
         </div>
-    </div>
-    
-    <!-- Change Password Card -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
-        <h2 class="text-lg font-semibold mb-4">Change Password</h2>
-        
-        {% if success %}
-        <div class="mb-4 p-3 rounded-lg bg-emerald-900/50 border border-emerald-700 text-emerald-300">
-            <div class="flex items-center">
-                <i data-lucide="check-circle" class="w-5 h-5 mr-2"></i>
-                Password updated successfully
-            </div>
+        <div class="card__body">
+            {% if success %}
+            {{ alert('Password updated successfully', 'success') }}
+            {% endif %}
+            
+            {% if error %}
+            {{ alert(error, 'danger') }}
+            {% endif %}
+            
+            <form method="POST" action="/profile/password">
+                <div class="form-group">
+                    <label for="current_password" class="form-label">Current Password</label>
+                    <input 
+                        type="password" 
+                        id="current_password" 
+                        name="current_password" 
+                        required
+                        autocomplete="current-password"
+                        class="form-input"
+                        placeholder="Enter current password"
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_password" class="form-label">New Password</label>
+                    <input 
+                        type="password" 
+                        id="new_password" 
+                        name="new_password" 
+                        required
+                        minlength="8"
+                        autocomplete="new-password"
+                        class="form-input"
+                        placeholder="Minimum 8 characters"
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirm_password" class="form-label">Confirm New Password</label>
+                    <input 
+                        type="password" 
+                        id="confirm_password" 
+                        name="confirm_password" 
+                        required
+                        minlength="8"
+                        autocomplete="new-password"
+                        class="form-input"
+                        placeholder="Repeat new password"
+                    >
+                </div>
+                
+                <button type="submit" class="btn btn--primary">
+                    Update Password
+                </button>
+            </form>
         </div>
-        {% endif %}
-        
-        {% if error %}
-        <div class="mb-4 p-3 rounded-lg bg-red-900/50 border border-red-700 text-red-300">
-            <div class="flex items-center">
-                <i data-lucide="alert-circle" class="w-5 h-5 mr-2"></i>
-                {{ error }}
-            </div>
-        </div>
-        {% endif %}
-        
-        <form method="POST" action="/profile/password">
-            <div class="mb-4">
-                <label for="current_password" class="block text-sm font-medium text-gray-400 mb-2">
-                    Current Password
-                </label>
-                <input 
-                    type="password" 
-                    id="current_password" 
-                    name="current_password" 
-                    required
-                    autocomplete="current-password"
-                    class="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-emerald-500"
-                    placeholder="Enter current password"
-                >
-            </div>
-            
-            <div class="mb-4">
-                <label for="new_password" class="block text-sm font-medium text-gray-400 mb-2">
-                    New Password
-                </label>
-                <input 
-                    type="password" 
-                    id="new_password" 
-                    name="new_password" 
-                    required
-                    minlength="8"
-                    autocomplete="new-password"
-                    class="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-emerald-500"
-                    placeholder="Minimum 8 characters"
-                >
-            </div>
-            
-            <div class="mb-6">
-                <label for="confirm_password" class="block text-sm font-medium text-gray-400 mb-2">
-                    Confirm New Password
-                </label>
-                <input 
-                    type="password" 
-                    id="confirm_password" 
-                    name="confirm_password" 
-                    required
-                    minlength="8"
-                    autocomplete="new-password"
-                    class="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-emerald-500"
-                    placeholder="Repeat new password"
-                >
-            </div>
-            
-            <button 
-                type="submit"
-                class="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
-            >
-                Update Password
-            </button>
-        </form>
     </div>
 </div>
 {% endblock %}

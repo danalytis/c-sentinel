@@ -5,50 +5,162 @@
 {% block head %}
 <style>
     body {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        background: linear-gradient(135deg, var(--bg-body) 0%, var(--bg-surface) 50%, var(--bg-elevated) 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .login-page {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+    }
+    
+    .login-container {
+        width: 100%;
+        max-width: 420px;
+    }
+    
+    .login-brand {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .login-brand__logo {
+        width: 64px;
+        height: 64px;
+        background: var(--color-brand);
+        border-radius: var(--border-radius-lg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem;
+        box-shadow: var(--glow-brand), var(--shadow-lg);
+    }
+    
+    .login-brand__logo svg {
+        width: 40px;
+        height: 40px;
+        color: white;
+    }
+    
+    .login-brand__title {
+        font-size: 1.875rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+    }
+    
+    .login-brand__subtitle {
+        color: var(--text-muted);
+        margin-top: 0.25rem;
+    }
+    
+    .login-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-default);
+        border-radius: var(--border-radius-lg);
+        padding: 2rem;
+        box-shadow: var(--shadow-xl);
+    }
+    
+    .login-card__title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+    
+    .login-footer {
+        text-align: center;
+        margin-top: 2rem;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+    }
+    
+    .login-footer a {
+        color: var(--text-muted);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        margin-top: 0.5rem;
+    }
+    
+    .login-footer a:hover {
+        color: var(--text-secondary);
+    }
+    
+    .password-wrapper {
+        position: relative;
+    }
+    
+    .password-toggle {
+        position: absolute;
+        right: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 0.25rem;
+        display: flex;
+        transition: color var(--transition-fast);
+    }
+    
+    .password-toggle:hover {
+        color: var(--text-secondary);
+    }
+    
+    .totp-input {
+        font-family: var(--font-mono);
+        font-size: 1.5rem;
+        letter-spacing: 0.2em;
+        text-align: center;
     }
 </style>
 {% endblock %}
 
-{% block body_class %}min-h-screen flex items-center justify-center{% endblock %}
+{# Override header/footer for login page #}
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
 
-{% block body %}
-<div class="w-full max-w-md px-4">
-    <!-- Logo and Title -->
-    <div class="text-center mb-8">
-        <div class="w-16 h-16 bg-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <i data-lucide="shield-check" class="w-10 h-10 text-white"></i>
+{% block main_class %}login-page{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    {# Brand / Logo #}
+    <div class="login-brand">
+        <div class="login-brand__logo">
+            <i data-lucide="shield-check"></i>
         </div>
-        <h1 class="text-3xl font-bold text-white">C-Sentinel</h1>
-        <p class="text-gray-400 mt-1">Semantic Observability Dashboard</p>
+        <h1 class="login-brand__title">C-Sentinel</h1>
+        <p class="login-brand__subtitle">Semantic Observability Dashboard</p>
     </div>
     
-    <!-- Login Card -->
-    <div class="bg-gray-800 rounded-xl shadow-2xl border border-gray-700 p-8">
+    {# Login Card #}
+    <div class="login-card">
         {% if totp_required %}
-        <!-- TOTP Verification Step -->
-        <h2 class="text-xl font-semibold text-white mb-2 text-center">Two-Factor Authentication</h2>
-        <p class="text-gray-400 text-sm text-center mb-6">Enter the code from your authenticator app</p>
+        {# ─────────────────────────────────────────────────────────────────
+           TOTP VERIFICATION STEP
+           ───────────────────────────────────────────────────────────────── #}
+        <h2 class="login-card__title">Two-Factor Authentication</h2>
+        <p class="text-muted text-center mb-6" style="margin-top: -0.5rem;">
+            Enter the code from your authenticator app
+        </p>
         
-        <!-- Error Message -->
         {% if error %}
-        <div class="mb-4 p-3 rounded-lg bg-red-900/50 border border-red-700 text-red-300">
-            <div class="flex items-center">
-                <i data-lucide="alert-circle" class="w-5 h-5 mr-2"></i>
-                {{ error }}
-            </div>
-        </div>
+        {{ alert(error, 'danger') }}
         {% endif %}
         
         <form method="POST">
-            <!-- Pass through username and password -->
             <input type="hidden" name="username" value="{{ username }}">
             <input type="hidden" name="password" value="{{ password }}">
             
-            <div class="mb-6">
-                <label for="totp_code" class="block text-sm font-medium text-gray-400 mb-2">
-                    Authentication Code
-                </label>
+            <div class="form-group">
+                <label for="totp_code" class="form-label">Authentication Code</label>
                 <input 
                     type="text" 
                     id="totp_code" 
@@ -59,49 +171,35 @@
                     maxlength="6"
                     pattern="[0-9]*"
                     inputmode="numeric"
-                    class="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white text-center text-2xl tracking-widest placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                    class="form-input totp-input"
                     placeholder="000000"
                 >
             </div>
             
-            <button 
-                type="submit"
-                class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-            >
-                <span class="flex items-center justify-center">
-                    <i data-lucide="shield-check" class="w-5 h-5 mr-2"></i>
-                    Verify
-                </span>
+            <button type="submit" class="btn btn--primary w-full" style="margin-top: 0.5rem;">
+                <i data-lucide="shield-check"></i>
+                <span>Verify</span>
             </button>
         </form>
         
-        <div class="mt-4 text-center">
-            <a href="/login" class="text-sm text-gray-400 hover:text-white">
-                ← Back to login
-            </a>
+        <div class="text-center mt-4">
+            <a href="/login" class="text-muted text-sm">← Back to login</a>
         </div>
         
         {% else %}
-        <!-- Normal Login -->
-        <h2 class="text-xl font-semibold text-white mb-6 text-center">Sign In</h2>
+        {# ─────────────────────────────────────────────────────────────────
+           NORMAL LOGIN
+           ───────────────────────────────────────────────────────────────── #}
+        <h2 class="login-card__title">Sign In</h2>
         
-        <!-- Error Message -->
         {% if error %}
-        <div class="mb-4 p-3 rounded-lg bg-red-900/50 border border-red-700 text-red-300">
-            <div class="flex items-center">
-                <i data-lucide="alert-circle" class="w-5 h-5 mr-2"></i>
-                {{ error }}
-            </div>
-        </div>
+        {{ alert(error, 'danger') }}
         {% endif %}
         
         <form method="POST">
             {% if multi_user %}
-            <!-- Multi-user mode: username + password -->
-            <div class="mb-4">
-                <label for="username" class="block text-sm font-medium text-gray-400 mb-2">
-                    Username
-                </label>
+            <div class="form-group">
+                <label for="username" class="form-label">Username</label>
                 <input 
                     type="text" 
                     id="username" 
@@ -109,17 +207,15 @@
                     required
                     autofocus
                     autocomplete="username"
-                    class="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                    class="form-input"
                     placeholder="Enter username"
                 >
             </div>
             {% endif %}
             
-            <div class="mb-6">
-                <label for="password" class="block text-sm font-medium text-gray-400 mb-2">
-                    Password
-                </label>
-                <div class="relative">
+            <div class="form-group">
+                <label for="password" class="form-label">Password</label>
+                <div class="password-wrapper">
                     <input 
                         type="password" 
                         id="password" 
@@ -127,42 +223,36 @@
                         required
                         {% if not multi_user %}autofocus{% endif %}
                         autocomplete="current-password"
-                        class="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                        class="form-input"
                         placeholder="Enter {% if multi_user %}password{% else %}dashboard password{% endif %}"
+                        style="padding-right: 2.5rem;"
                     >
-                    <button 
-                        type="button" 
-                        onclick="togglePassword()"
-                        class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-                    >
-                        <i data-lucide="eye" id="eye-icon" class="w-5 h-5"></i>
+                    <button type="button" class="password-toggle" onclick="togglePassword()" aria-label="Toggle password visibility">
+                        <i data-lucide="eye" id="eye-icon"></i>
                     </button>
                 </div>
             </div>
             
-            <button 
-                type="submit"
-                class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-            >
-                <span class="flex items-center justify-center">
-                    <i data-lucide="log-in" class="w-5 h-5 mr-2"></i>
-                    Sign In
-                </span>
+            <button type="submit" class="btn btn--primary w-full">
+                <i data-lucide="log-in"></i>
+                <span>Sign In</span>
             </button>
         </form>
         {% endif %}
     </div>
     
-    <!-- Footer -->
-    <div class="mt-8 text-center text-gray-500 text-sm">
+    {# Footer #}
+    <div class="login-footer">
         <p>C-Sentinel v{{ config.VERSION }}</p>
-        <a href="https://github.com/williamofai/c-sentinel" class="hover:text-gray-300 inline-flex items-center mt-2">
-            <i data-lucide="github" class="w-4 h-4 mr-1"></i>
+        <a href="https://github.com/williamofai/c-sentinel" target="_blank" rel="noopener">
+            <i data-lucide="github" style="width: 16px; height: 16px;"></i>
             GitHub
         </a>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
     lucide.createIcons();
     
@@ -181,8 +271,11 @@
     }
     
     // Auto-filter TOTP input to numbers only
-    document.getElementById('totp_code')?.addEventListener('input', function(e) {
-        this.value = this.value.replace(/[^0-9]/g, '');
-    });
+    const totpInput = document.getElementById('totp_code');
+    if (totpInput) {
+        totpInput.addEventListener('input', function(e) {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+    }
 </script>
 {% endblock %}

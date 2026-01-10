@@ -184,10 +184,23 @@ uninstall:
 	rm -f $(PREFIX)/bin/sentinel
 	rm -f $(PREFIX)/bin/sentinel-diff
 
-# ============================================================
-# Testing
-# ============================================================
+# Install
+PREFIX ?= /usr/local
+install: all
+	install -d $(PREFIX)/bin
+	install -m 755 $(SENTINEL) $(PREFIX)/bin/
+	install -m 755 $(SENTINEL_DIFF) $(PREFIX)/bin/
+	install -d $(PREFIX)/share/man/man1
+	install -m 644 man/sentinel.1 $(PREFIX)/share/man/man1/
+	@echo "Installed to $(PREFIX)/bin/"
 
+# Uninstall
+uninstall:
+	rm -f $(PREFIX)/bin/sentinel
+	rm -f $(PREFIX)/bin/sentinel-diff
+	rm -f $(PREFIX)/share/man/man1/sentinel.1
+
+# Test suite
 test: all
 	@echo "=== C-Sentinel Test Suite ==="
 	@echo ""
