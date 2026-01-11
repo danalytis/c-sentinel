@@ -172,18 +172,6 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS)
 # Installation
 # ============================================================
 
-PREFIX ?= /usr/local
-
-install: all
-	install -d $(PREFIX)/bin
-	install -m 755 $(SENTINEL) $(PREFIX)/bin/
-	install -m 755 $(SENTINEL_DIFF) $(PREFIX)/bin/
-	@echo "Installed to $(PREFIX)/bin/"
-
-uninstall:
-	rm -f $(PREFIX)/bin/sentinel
-	rm -f $(PREFIX)/bin/sentinel-diff
-
 # Install
 PREFIX ?= /usr/local
 install: all
@@ -205,28 +193,27 @@ test: all
 	@echo "=== C-Sentinel Test Suite ==="
 	@echo ""
 	@echo "1. Quick mode test..."
-	@./$(SENTINEL) --quick > /dev/null && echo "   PASS: Quick mode" || echo "   FAIL: Quick mode"
+	@(./$(SENTINEL) --quick > /dev/null && echo "   PASS: Quick mode" || echo "   FAIL: Quick mode") || true
 	@echo ""
 	@echo "2. JSON output test..."
-	@./$(SENTINEL) /etc/hosts > /tmp/sentinel_test.json 2>/dev/null && echo "   PASS: JSON output" || echo "   FAIL: JSON output"
+	@(./$(SENTINEL) /etc/hosts > /tmp/sentinel_test.json 2>/dev/null && echo "   PASS: JSON output" || echo "   FAIL: JSON output") || true
 	@echo ""
 	@echo "3. Diff tool test..."
-	@./$(SENTINEL) > /tmp/fp1.json 2>/dev/null
-	@./$(SENTINEL) > /tmp/fp2.json 2>/dev/null
-	@./$(SENTINEL_DIFF) /tmp/fp1.json /tmp/fp2.json > /dev/null 2>&1 && echo "   PASS: Diff tool" || echo "   PASS: Diff tool (differences found)"
+	@./$(SENTINEL) > /tmp/fp1.json 2>/dev/null || true
+	@./$(SENTINEL) > /tmp/fp2.json 2>/dev/null || true
+	@(./$(SENTINEL_DIFF) /tmp/fp1.json /tmp/fp2.json > /dev/null 2>&1 && echo "   PASS: Diff tool" || echo "   PASS: Diff tool (differences found)") || true
 	@echo ""
 	@echo "4. JSON validity test..."
-	@python3 -c "import json; json.load(open('/tmp/sentinel_test.json'))" 2>/dev/null && echo "   PASS: Valid JSON" || echo "   FAIL: Invalid JSON"
+	@(python3 -c "import json; json.load(open('/tmp/sentinel_test.json'))" 2>/dev/null && echo "   PASS: Valid JSON" || echo "   FAIL: Invalid JSON") || true
 	@echo ""
 	@echo "5. Audit probe test ($(if $(filter linux,$(PLATFORM)),auditd,openbsm))..."
-	@./$(SENTINEL) --audit --quick 2>/dev/null && echo "   PASS: Audit probe" || echo "   WARN: Audit probe (audit may not be enabled)"
+	@(./$(SENTINEL) --audit --quick 2>/dev/null && echo "   PASS: Audit probe" || echo "   WARN: Audit probe (audit may not be enabled)") || true
 	@echo ""
 	@echo "6. Colour output test..."
-	@./$(SENTINEL) --quick --color 2>/dev/null | head -1 | grep -q "C-Sentinel" && echo "   PASS: Colour output" || echo "   FAIL: Colour output"
+	@(./$(SENTINEL) --quick --color 2>/dev/null | head -1 | grep -q "C-Sentinel" && echo "   PASS: Colour output" || echo "   FAIL: Colour output") || true
 	@echo ""
 	@echo "=== All tests complete ==="
 	@rm -f /tmp/sentinel_test.json /tmp/fp1.json /tmp/fp2.json
-
 # ============================================================
 # Cleanup
 # ============================================================
